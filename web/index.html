@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Word Catcher</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#F3F4F7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Words">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;1,400&family=Rubik:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main id="app" class="app">
+  <!-- Sign in -->
+  <section id="view-signin" class="view" hidden>
+    <div class="signin">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
+      </div>
+      <h1>Word Catcher</h1>
+      <p class="muted">The words you mark on your Mac, ready to learn. Sign in with the same email you used on the Mac.</p>
+      <form id="form-email" class="stack">
+        <label class="field">
+          <span>Email</span>
+          <input id="input-email" type="email" autocomplete="email" inputmode="email" required placeholder="you@example.com">
+        </label>
+        <button class="btn btn-primary" type="submit">Email me a code</button>
+      </form>
+      <form id="form-code" class="stack" hidden>
+        <p class="muted" id="code-hint"></p>
+        <label class="field">
+          <span>Code</span>
+          <input id="input-code" type="text" inputmode="numeric" autocomplete="one-time-code" required placeholder="6-digit code">
+        </label>
+        <button class="btn btn-primary" type="submit">Sign in</button>
+        <button class="btn btn-quiet" type="button" id="btn-other-email">Use a different email</button>
+      </form>
+      <p class="error" id="signin-error" role="alert" hidden></p>
+    </div>
+  </section>
+
+  <!-- My words -->
+  <section id="view-words" class="view" hidden>
+    <header class="top">
+      <div>
+        <h1>My words</h1>
+        <p class="muted" id="words-summary"></p>
+      </div>
+      <button class="icon-btn" type="button" id="btn-menu" aria-label="Account">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg>
+      </button>
+    </header>
+
+    <button class="cta" type="button" id="btn-start">
+      <span class="cta-text">
+        <span class="cta-title" id="cta-title">Start today’s review</span>
+        <span class="cta-sub" id="cta-sub"></span>
+      </span>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+    </button>
+
+    <label class="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+      <input id="input-search" type="search" placeholder="Search in English or Hebrew" aria-label="Search your words">
+    </label>
+
+    <div class="filters" id="filters" role="group" aria-label="Filter words"></div>
+
+    <ul class="word-list" id="word-list"></ul>
+    <p class="empty" id="words-empty" hidden></p>
+  </section>
+
+  <!-- Review -->
+  <section id="view-review" class="view view-review" hidden>
+    <div class="review-top">
+      <button class="icon-btn" type="button" id="btn-close-review" aria-label="Back to my words">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+      </button>
+      <div class="progress" aria-hidden="true"><div class="progress-bar" id="progress-bar"></div></div>
+      <span class="muted small" id="review-position"></span>
+    </div>
+
+    <div id="review-front" class="review-body">
+      <article class="card card-front">
+        <span class="muted small" id="front-source"></span>
+        <p class="sentence sentence-lg" id="front-sentence"></p>
+        <div class="grow"></div>
+        <div class="prompt-row">
+          <span id="front-prompt"></span>
+          <button class="icon-btn icon-btn-brand" type="button" data-speak aria-label="Play pronunciation">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M19 5a10 10 0 0 1 0 14"></path></svg>
+          </button>
+        </div>
+      </article>
+      <button class="btn btn-primary btn-tall" type="button" id="btn-flip">Show meaning</button>
+    </div>
+
+    <div id="review-back" class="review-body" hidden>
+      <article class="card card-back">
+        <span class="muted small" id="back-source"></span>
+        <p class="sentence" id="back-sentence"></p>
+        <hr>
+        <p class="hebrew hebrew-lg" dir="rtl" lang="he" id="back-hebrew"></p>
+        <div class="word-head">
+          <div>
+            <div><span class="lemma" id="back-lemma"></span> <span class="muted small" id="back-pos"></span></div>
+            <span class="muted small" id="back-ipa"></span>
+          </div>
+          <button class="icon-btn icon-btn-brand" type="button" data-speak aria-label="Play pronunciation">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M19 5a10 10 0 0 1 0 14"></path></svg>
+          </button>
+        </div>
+        <p class="meaning" id="back-meaning"></p>
+        <div class="example">
+          <span class="label">Another example</span>
+          <span class="sentence-italic" id="back-example"></span>
+        </div>
+      </article>
+      <div class="answer-row">
+        <button class="btn btn-outline btn-answer" type="button" id="btn-forgot">
+          <span>Didn’t know</span><span class="sub">back tomorrow</span>
+        </button>
+        <button class="btn btn-primary btn-answer" type="button" id="btn-knew">
+          <span>Knew it</span><span class="sub" id="knew-sub"></span>
+        </button>
+      </div>
+    </div>
+
+    <div id="review-done" class="review-body" hidden>
+      <div class="done">
+        <div class="done-mark" aria-hidden="true">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        </div>
+        <h2>Done for today</h2>
+        <p id="done-text"></p>
+        <div class="stat-card">
+          <div class="stat-row"><span class="muted">Next review</span><span id="done-next"></span></div>
+          <div class="stat-row"><span class="muted">In your list</span><span id="done-total"></span></div>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-tall" type="button" id="btn-done">See my words</button>
+    </div>
+  </section>
+
+  <p class="toast" id="toast" role="status" hidden></p>
+</main>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
