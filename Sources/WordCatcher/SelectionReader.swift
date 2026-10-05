@@ -104,7 +104,7 @@ enum SelectionReader {
     }
 
     private static func markerContext(on element: AXUIElement, markerRange: CFTypeRef, selected: String) -> (sentence: String, method: String)? {
-        guard let start = param(element, "AXStartTextMarkerForTextMarkerRange", markerRange) else { return nil }
+        guard let start = startMarker(of: markerRange, in: element) else { return nil }
         let phrase = selected.trimmed
 
         if let range = param(element, "AXSentenceTextMarkerRangeForTextMarker", start),
@@ -129,6 +129,13 @@ enum SelectionReader {
             }
         }
         return nil
+    }
+
+    /// Chromium (Claude, Slack, Chrome) doesn't answer AXStartTextMarkerForTextMarkerRange; the system function does the same job.
+    private static func startMarker(of markerRange: CFTypeRef, in element: AXUIElement) -> CFTypeRef? {
+        if let start = param(element, "AXStartTextMarkerForTextMarkerRange", markerRange) { return start }
+        guard CFGetTypeID(markerRange) == AXTextMarkerRangeGetTypeID() else { return nil }
+        return AXTextMarkerRangeCopyStartMarker(markerRange as! AXTextMarkerRange)
     }
 
     /// Which accessibility features an element offers (names only, never its text). Helps support more apps.

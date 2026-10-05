@@ -3,7 +3,7 @@ import ApplicationServices
 import Carbon
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var hotKey: HotKey?
     private let store = WordStore()
@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var popup = PopupController(store: store)
     private lazy var windows = WindowsController(store: store, cloud: cloud)
     private var syncTimer: Timer?
+    private var syncItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installEditMenu()
@@ -35,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
         if Keychain.isMissing { windows.showAPIKey() }
+        if !cloud.isSignedIn { windows.showSync() }
 
         Log.write("launched, accessibility=\(AXIsProcessTrusted()) key=\(Keychain.hasAPIKey) cloud=\(cloud.isSignedIn)")
     }
@@ -66,13 +68,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mark.keyEquivalentModifierMask = [.control, .option]
         menu.addItem(mark)
         menu.addItem(.separator())
+        let sync = NSMenuItem(title: "Sync with your phone…", action: #selector(showSync), keyEquivalent: "")
+        menu.addItem(sync)
+        syncItem = sync
         menu.addItem(NSMenuItem(title: "My words…", action: #selector(showWords), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Sync with your phone…", action: #selector(showSync), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Claude API key…", action: #selector(showAPIKey), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Accessibility permission…", action: #selector(openAccessibilityFromMenu), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Word Catcher", action: #selector(quit), keyEquivalent: "q"))
         for menuItem in menu.items { menuItem.target = self }
+        menu.delegate = self
         item.menu = menu
         statusItem = item
     }
@@ -89,6 +94,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editItem.submenu = edit
         mainMenu.addItem(editItem)
         NSApp.mainMenu = mainMenu
+    }
+
+    /// Shows at a glance whether words reach the phone.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if let session = cloud.session {
+            syncItem?.title = cloud.lastError == nil ? "Phone sync on · \(session.email)" : "Phone sync: problem, click to see"
+        } else {
+            syncItem?.title = "Turn on phone sync…"
+        }
     }
 
     @objc private func markFromMenu() { Task { await markSelection() } }
