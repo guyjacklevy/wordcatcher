@@ -65,6 +65,25 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
     </button>
 
+    <div class="reminder" id="reminder" hidden>
+      <span class="reminder-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+      </span>
+      <div class="reminder-text">
+        <span class="reminder-title">Daily reminder</span>
+        <span class="muted small" id="reminder-sub"></span>
+        <span class="reminder-links" id="reminder-links" hidden>
+          <button type="button" class="link-btn" id="btn-reminder-test">Send a test</button>
+          <button type="button" class="link-btn" id="btn-reminder-off">Turn off</button>
+        </span>
+      </div>
+      <button type="button" class="chip chip-brand" id="btn-reminder-on" hidden>Turn on</button>
+      <label class="time-select" id="reminder-time-wrap" hidden>
+        <span class="visually-hidden">Reminder time</span>
+        <select id="reminder-time"></select>
+      </label>
+    </div>
+
     <label class="search">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
       <input id="input-search" type="search" placeholder="Search in English or Hebrew" aria-label="Search your words">

@@ -158,6 +158,8 @@ function metaFor(word) {
   return parts.join(' · ');
 }
 
+const wordCount = (n) => `${n} ${n === 1 ? 'word' : 'words'}`;
+
 const STATUS_LABEL = { new: 'New', learning: 'Learning', known: 'Known' };
 const isDue = (word) => word.due_on <= localDay(0);
 
@@ -233,6 +235,7 @@ async function submitSignIn(event) {
 
 async function openWords() {
   showView('words');
+  initReminders();
   await loadWords();
 }
 
@@ -271,7 +274,7 @@ function renderWords() {
     $('cta-title').textContent = 'Nothing to review today';
     const upcoming = words.map((w) => w.due_on).filter((d) => d > localDay(0)).sort()[0];
     $('cta-sub').textContent = upcoming
-      ? `Next: ${dayLabel(upcoming)} · ${words.filter((w) => w.due_on === upcoming).length} words`
+      ? `Next: ${dayLabel(upcoming)} · ${wordCount(words.filter((w) => w.due_on === upcoming).length)}`
       : 'Mark words on your Mac to start';
   }
 
@@ -459,9 +462,125 @@ function renderDone() {
 
   const upcoming = state.words.map((w) => w.due_on).filter((d) => d > localDay(0)).sort()[0];
   $('done-next').textContent = upcoming
-    ? `${dayLabel(upcoming)} · ${state.words.filter((w) => w.due_on === upcoming).length} words`
+    ? `${dayLabel(upcoming)} · ${wordCount(state.words.filter((w) => w.due_on === upcoming).length)}`
     : '—';
-  $('done-total').textContent = `${state.words.length} words`;
+  $('done-total').textContent = wordCount(state.words.length);
+}
+
+// ─── daily reminder (web push) ───
+
+const reminder = { reg: null, sub: null, hour: 9, ready: false };
+
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const hourLabel = (h) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+function base64UrlToBytes(value) {
+  const base64 = (value + '='.repeat((4 - (value.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/');
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+}
+
+async function initReminders() {
+  if (reminder.ready) { renderReminder(); return; }
+  reminder.ready = true;
+  $('reminder-time').replaceChildren(...Array.from({ length: 24 }, (_, h) => el('option', { value: String(h), text: hourLabel(h) })));
+  if (pushSupported()) {
+    try {
+      reminder.reg = await navigator.serviceWorker.register('/sw.js');
+      reminder.sub = await reminder.reg.pushManager.getSubscription();
+    } catch (error) {
+      console.warn('[reminders] service worker unavailable', error);
+    }
+  }
+  if (reminder.sub) {
+    const { data } = await sb.from('push_subscriptions').select('remind_hour').eq('endpoint', reminder.sub.endpoint).maybeSingle();
+    if (data) reminder.hour = data.remind_hour;
+    else await saveSubscription(reminder.sub).catch(() => {}); // subscribed on this device but not saved for this account
+  }
+  renderReminder();
+}
+
+function renderReminder() {
+  const box = $('reminder');
+  const show = (id, visible) => { $(id).hidden = !visible; };
+  if (!pushSupported()) {
+    // iPhone Safari only allows notifications for apps opened from the Home Screen.
+    box.hidden = !(isIOS() && !isStandalone());
+    $('reminder-sub').textContent = 'Add this app to your Home Screen (Share → Add to Home Screen), then open it from there to turn on reminders.';
+    ['btn-reminder-on', 'reminder-time-wrap', 'reminder-links'].forEach((id) => show(id, false));
+    return;
+  }
+  box.hidden = false;
+  if (Notification.permission === 'denied') {
+    $('reminder-sub').textContent = 'Notifications are blocked. Allow them for this app in Settings → Notifications.';
+    ['btn-reminder-on', 'reminder-time-wrap', 'reminder-links'].forEach((id) => show(id, false));
+    return;
+  }
+  const on = Boolean(reminder.sub) && Notification.permission === 'granted';
+  show('btn-reminder-on', !on);
+  show('reminder-time-wrap', on);
+  show('reminder-links', on);
+  $('reminder-sub').textContent = on ? 'Only on days with words to review.' : 'A nudge on days with words to review.';
+  if (on) $('reminder-time').value = String(reminder.hour);
+}
+
+async function saveSubscription(sub) {
+  const { keys } = sub.toJSON();
+  const { error } = await sb.from('push_subscriptions').upsert({
+    endpoint: sub.endpoint,
+    p256dh: keys.p256dh,
+    auth: keys.auth,
+    time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    remind_hour: reminder.hour,
+  }, { onConflict: 'endpoint' });
+  if (error) throw error;
+}
+
+async function turnOnReminder() {
+  const button = $('btn-reminder-on');
+  button.disabled = true;
+  try {
+    // Ask first, while the tap still counts as the user's action (iPhone requires it).
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') return;
+    reminder.reg = reminder.reg ?? await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/reminders?action=public-key`, { headers: { apikey: SUPABASE_KEY } });
+    const { publicKey } = await response.json();
+    reminder.sub = await reminder.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(publicKey) });
+    await saveSubscription(reminder.sub);
+    toast(`Reminder on: ${hourLabel(reminder.hour)}, on days with words to review.`);
+  } catch (error) {
+    console.error('[reminders] turn on failed', error);
+    toast('Couldn’t turn on reminders. Try again.');
+  } finally {
+    button.disabled = false;
+    renderReminder();
+  }
+}
+
+async function changeReminderTime(event) {
+  reminder.hour = Number(event.target.value);
+  const { error } = await sb.from('push_subscriptions')
+    .update({ remind_hour: reminder.hour, time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' })
+    .eq('endpoint', reminder.sub.endpoint);
+  toast(error ? 'Couldn’t change the time. Try again.' : `Reminder moved to ${hourLabel(reminder.hour)}.`);
+}
+
+async function turnOffReminder() {
+  const sub = reminder.sub;
+  if (!sub) return;
+  await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+  await sub.unsubscribe().catch(() => {});
+  reminder.sub = null;
+  renderReminder();
+  toast('Reminder off.');
+}
+
+async function sendTestReminder() {
+  const { error } = await sb.functions.invoke('reminders', { body: { action: 'test' } });
+  toast(error ? 'Couldn’t send a test. Try again in a moment.' : 'Test sent. It should arrive in a few seconds.');
 }
 
 // ─── wiring ───
@@ -479,6 +598,10 @@ function wire() {
   for (const button of document.querySelectorAll('[data-speak]')) {
     button.addEventListener('click', () => { const word = currentWord(); if (word) speak(word.lemma); });
   }
+  $('btn-reminder-on').addEventListener('click', turnOnReminder);
+  $('reminder-time').addEventListener('change', changeReminderTime);
+  $('btn-reminder-off').addEventListener('click', turnOffReminder);
+  $('btn-reminder-test').addEventListener('click', sendTestReminder);
   $('btn-menu').addEventListener('click', async () => {
     const { data } = await sb.auth.getUser();
     if (window.confirm(`Signed in as ${data.user?.email ?? 'you'}.\n\nSign out?`)) await sb.auth.signOut();
@@ -505,5 +628,5 @@ boot();
 
 // Local preview only: lets the dev tools render views with sample data.
 if (['localhost', '127.0.0.1'].includes(location.hostname)) {
-  window.__wc = { state, renderWords, startReview, showView, renderCard };
+  window.__wc = { state, renderWords, startReview, showView, renderCard, initReminders, reminder, renderReminder };
 }

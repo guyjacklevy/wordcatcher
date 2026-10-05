@@ -23,12 +23,15 @@ Words sync through Supabase (project `wordcatcher`, id `aceyqtcljidnfzesqyjq`). 
 
 On the Mac: menu bar book icon → Sync with your phone… → sign in once. Saved words are pushed automatically.
 
+Daily reminder: in the phone app, turn on "Daily reminder" and pick a time. The `reminders` edge function runs every hour (pg_cron) and sends a web push at each device's local reminder time, only on days with words due. VAPID keys and the cron key live in `app_secrets` (server-only).
+
 ## Build
 
 ```bash
-./scripts/build-app.sh
-open dist/WordCatcher.app
+./scripts/install.sh
 ```
+
+This builds the app, installs it as `~/Applications/WordCatcher.app` and starts it. It opens at login (menu: Open at login).
 
 Requires the Swift toolchain (Xcode Command Line Tools is enough).
 

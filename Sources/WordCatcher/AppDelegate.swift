@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Carbon
+import ServiceManagement
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -12,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var windows = WindowsController(store: store, cloud: cloud)
     private var syncTimer: Timer?
     private var syncItem: NSMenuItem?
+    private var loginItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installEditMenu()
@@ -35,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // First run: ask for Accessibility (needed to read the selection) and for the API key.
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
+        enableOpenAtLoginOnce()
         if Keychain.isMissing { windows.showAPIKey() }
         if !cloud.isSignedIn { windows.showSync() }
 
@@ -74,6 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(NSMenuItem(title: "My words…", action: #selector(showWords), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Claude API key…", action: #selector(showAPIKey), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Accessibility permission…", action: #selector(openAccessibilityFromMenu), keyEquivalent: ""))
+        let login = NSMenuItem(title: "Open at login", action: #selector(toggleOpenAtLogin), keyEquivalent: "")
+        menu.addItem(login)
+        loginItem = login
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Word Catcher", action: #selector(quit), keyEquivalent: "q"))
         for menuItem in menu.items { menuItem.target = self }
@@ -96,13 +102,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.mainMenu = mainMenu
     }
 
-    /// Shows at a glance whether words reach the phone.
+    /// Shows at a glance whether words reach the phone, and whether the app opens at login.
     func menuNeedsUpdate(_ menu: NSMenu) {
+        loginItem?.state = SMAppService.mainApp.status == .enabled ? .on : .off
         if let session = cloud.session {
             syncItem?.title = cloud.lastError == nil ? "Phone sync on · \(session.email)" : "Phone sync: problem, click to see"
         } else {
             syncItem?.title = "Turn on phone sync…"
         }
+    }
+
+    // MARK: - Open at login
+
+    /// Turned on automatically the first time; after that the menu switch decides.
+    private func enableOpenAtLoginOnce() {
+        let key = "openAtLoginConfigured"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        setOpenAtLogin(true)
+    }
+
+    @objc private func toggleOpenAtLogin() {
+        setOpenAtLogin(SMAppService.mainApp.status != .enabled)
+    }
+
+    private func setOpenAtLogin(_ on: Bool) {
+        do {
+            if on {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            Log.write("open at login \(on ? "on" : "off") failed: \(error.localizedDescription)")
+        }
+        // macOS may want the user to approve it in System Settings → General → Login Items.
+        if on, SMAppService.mainApp.status == .requiresApproval {
+            SMAppService.openSystemSettingsLoginItems()
+        }
+        Log.write("open at login: \(SMAppService.mainApp.status.rawValue)")
     }
 
     @objc private func markFromMenu() { Task { await markSelection() } }
