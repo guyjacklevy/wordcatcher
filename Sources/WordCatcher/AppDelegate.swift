@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // First run: ask for Accessibility (needed to read the selection) and for the API key.
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
-        if !Keychain.hasAPIKey { windows.showAPIKey() }
+        if Keychain.isMissing { windows.showAPIKey() }
 
         Log.write("launched, accessibility=\(AXIsProcessTrusted()) key=\(Keychain.hasAPIKey) cloud=\(cloud.isSignedIn)")
     }

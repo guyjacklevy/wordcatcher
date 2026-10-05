@@ -27,23 +27,20 @@
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
       </div>
       <h1>Word Catcher</h1>
-      <p class="muted">The words you mark on your Mac, ready to learn. Sign in with the same email you used on the Mac.</p>
-      <form id="form-email" class="stack">
+      <p class="muted">The words you mark on your Mac, ready to learn. Sign in with the same email and password as on your Mac.</p>
+      <form id="form-signin" class="stack">
         <label class="field">
           <span>Email</span>
-          <input id="input-email" type="email" autocomplete="email" inputmode="email" required placeholder="you@example.com">
+          <input id="input-email" type="email" autocomplete="username" inputmode="email" required placeholder="you@example.com">
         </label>
-        <button class="btn btn-primary" type="submit">Email me a code</button>
-      </form>
-      <form id="form-code" class="stack" hidden>
-        <p class="muted" id="code-hint"></p>
         <label class="field">
-          <span>Code</span>
-          <input id="input-code" type="text" inputmode="numeric" autocomplete="one-time-code" required placeholder="6-digit code">
+          <span>Password</span>
+          <input id="input-password" type="password" autocomplete="current-password" required minlength="6" placeholder="At least 6 characters">
         </label>
-        <button class="btn btn-primary" type="submit">Sign in</button>
-        <button class="btn btn-quiet" type="button" id="btn-other-email">Use a different email</button>
+        <button class="btn btn-primary" type="submit" id="btn-signin">Sign in</button>
+        <button class="btn btn-quiet" type="button" id="btn-mode">New here? Create an account</button>
       </form>
+      <p class="muted" id="signin-info" role="status" hidden></p>
       <p class="error" id="signin-error" role="alert" hidden></p>
     </div>
   </section>

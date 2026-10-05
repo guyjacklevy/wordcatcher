@@ -14,7 +14,6 @@ const MAX_PER_SESSION = 40;
 
 const $ = (id) => document.getElementById(id);
 const state = {
-  email: '',
   words: [],
   filter: 'all',
   query: '',
@@ -164,11 +163,20 @@ const isDue = (word) => word.due_on <= localDay(0);
 
 // ─── sign in ───
 
+let creating = false;
+
 function showSignIn() {
-  $('form-email').hidden = false;
-  $('form-code').hidden = true;
-  $('signin-error').hidden = true;
+  setMode(false);
+  signInError('');
+  signInInfo('');
   showView('signin');
+}
+
+function setMode(create) {
+  creating = create;
+  $('btn-signin').textContent = create ? 'Create account' : 'Sign in';
+  $('btn-mode').textContent = create ? 'I already have an account' : 'New here? Create an account';
+  $('input-password').setAttribute('autocomplete', create ? 'new-password' : 'current-password');
 }
 
 function signInError(message) {
@@ -176,40 +184,48 @@ function signInError(message) {
   $('signin-error').hidden = !message;
 }
 
-async function sendCode(event) {
-  event.preventDefault();
-  const email = $('input-email').value.trim().toLowerCase();
-  if (!email) return;
-  const button = event.submitter;
-  button.disabled = true;
-  signInError('');
-  const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
-  button.disabled = false;
-  if (error) {
-    signInError(error.message.includes('rate') ? 'Too many codes asked for. Wait a few minutes and try again.' : error.message);
-    return;
-  }
-  state.email = email;
-  $('code-hint').textContent = `We emailed a code to ${email}. It can take a minute to arrive.`;
-  $('form-email').hidden = true;
-  $('form-code').hidden = false;
-  $('input-code').value = '';
-  $('input-code').focus();
+function signInInfo(message) {
+  $('signin-info').textContent = message;
+  $('signin-info').hidden = !message;
 }
 
-async function verifyCode(event) {
+const AUTH_MESSAGES = {
+  'Invalid login credentials': 'Wrong email or password.',
+  'Email not confirmed': 'Confirm your email first: click the link Supabase sent you.',
+  'User already registered': 'This email already has an account. Sign in instead.',
+};
+
+async function submitSignIn(event) {
   event.preventDefault();
-  const token = $('input-code').value.replace(/\D/g, '');
-  if (!token) return;
-  const button = event.submitter;
+  const email = $('input-email').value.trim().toLowerCase();
+  const password = $('input-password').value;
+  if (!email || password.length < 6) return;
+  const button = $('btn-signin');
   button.disabled = true;
   signInError('');
-  const { error } = await sb.auth.verifyOtp({ email: state.email, token, type: 'email' });
-  button.disabled = false;
-  if (error) {
-    signInError('That code didn’t work. Check the latest email, or ask for a new code.');
-    return;
+  signInInfo('');
+
+  if (creating) {
+    const { data, error } = await sb.auth.signUp({ email, password });
+    button.disabled = false;
+    if (error) {
+      signInError(AUTH_MESSAGES[error.message] ?? error.message);
+      return;
+    }
+    if (!data.session) {
+      signInInfo('Almost done: Supabase emailed you a link. Click it to confirm your email, then sign in here.');
+      setMode(false);
+      return;
+    }
+  } else {
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    button.disabled = false;
+    if (error) {
+      signInError(AUTH_MESSAGES[error.message] ?? error.message);
+      return;
+    }
   }
+  $('input-password').value = '';
   await openWords();
 }
 
@@ -451,9 +467,8 @@ function renderDone() {
 // ─── wiring ───
 
 function wire() {
-  $('form-email').addEventListener('submit', sendCode);
-  $('form-code').addEventListener('submit', verifyCode);
-  $('btn-other-email').addEventListener('click', showSignIn);
+  $('form-signin').addEventListener('submit', submitSignIn);
+  $('btn-mode').addEventListener('click', () => { setMode(!creating); signInError(''); signInInfo(''); });
   $('btn-start').addEventListener('click', startReview);
   $('input-search').addEventListener('input', (e) => { state.query = e.target.value; renderWords(); });
   $('btn-close-review').addEventListener('click', () => { showView('words'); renderWords(); });

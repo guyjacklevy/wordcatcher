@@ -20,12 +20,14 @@ enum CloudError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notSignedIn: return "Not signed in."
+        case .server(_, let message) where message == "Invalid login credentials": return "Wrong email or password."
+        case .server(_, let message) where message == "Email not confirmed": return "Confirm your email first: click the link Supabase sent you."
         case .server(let status, let message): return "Sync error (\(status)): \(message)"
         }
     }
 }
 
-/// Signs in with an emailed 6-digit code and pushes saved words to the cloud, so the phone can review them.
+/// Signs in with email + password and pushes saved words to the cloud, so the phone can review them.
 /// The session lives in ~/Library/Application Support/WordCatcher/session.json, readable only by this user.
 @MainActor
 final class CloudSync: ObservableObject {
@@ -49,14 +51,21 @@ final class CloudSync: ObservableObject {
 
     // MARK: - Sign in
 
-    func sendCode(to email: String) async throws {
-        _ = try await auth("otp", body: ["email": email, "create_user": true])
-    }
-
-    func verify(email: String, code: String) async throws {
-        let data = try await auth("verify", body: ["type": "email", "email": email, "token": code])
+    func signIn(email: String, password: String) async throws {
+        let data = try await auth("token", query: "grant_type=password", body: ["email": email, "password": password])
         try storeSession(from: data, email: email)
         await sync()
+    }
+
+    /// Returns true when signed in right away, false when Supabase wants the email confirmed first.
+    func createAccount(email: String, password: String) async throws -> Bool {
+        let data = try await auth("signup", body: ["email": email, "password": password])
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], json["access_token"] != nil else {
+            return false
+        }
+        try storeSession(from: data, email: email)
+        await sync()
+        return true
     }
 
     func signOut() {

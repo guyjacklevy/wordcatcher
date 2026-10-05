@@ -71,6 +71,7 @@ enum SelectionReader {
                 sentence = context.sentence
                 method += "+" + context.method
             }
+            if sentence == nil { Log.write("no sentence: \(describe(focused))") }
             return Found(selection: selected.trimmed, sentence: sentence, method: method)
         }
 
@@ -128,6 +129,26 @@ enum SelectionReader {
             }
         }
         return nil
+    }
+
+    /// Which accessibility features an element offers (names only, never its text). Helps support more apps.
+    private static func describe(_ element: AXUIElement) -> String {
+        var names: CFArray?
+        var params: CFArray?
+        AXUIElementCopyAttributeNames(element, &names)
+        AXUIElementCopyParameterizedAttributeNames(element, &params)
+        let role = string(element, kAXRoleAttribute) ?? "?"
+        let attrs = ((names as? [String]) ?? []).joined(separator: ",")
+        let paramNames = ((params as? [String]) ?? []).joined(separator: ",")
+        var chain: [String] = []
+        var current = self.element(element, kAXParentAttribute)
+        for _ in 0..<6 {
+            guard let parent = current else { break }
+            let hasMarkers = attr(parent, "AXSelectedTextMarkerRange") != nil
+            chain.append("\(string(parent, kAXRoleAttribute) ?? "?")\(hasMarkers ? "*" : "")")
+            current = self.element(parent, kAXParentAttribute)
+        }
+        return "role=\(role) attrs=[\(attrs)] params=[\(paramNames)] parents=[\(chain.joined(separator: ">"))]"
     }
 
     /// The text of an element's subtree, the way a screen reader sees it. Blocks end with a line break.

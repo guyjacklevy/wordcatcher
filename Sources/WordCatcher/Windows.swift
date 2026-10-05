@@ -111,10 +111,11 @@ struct SyncView: View {
     @ObservedObject var cloud: CloudSync
     @ObservedObject var store: WordStore
     @State private var email = ""
-    @State private var code = ""
-    @State private var codeSent = false
+    @State private var password = ""
+    @State private var creating = false
     @State private var busy = false
     @State private var error: String?
+    @State private var info: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -126,7 +127,7 @@ struct SyncView: View {
                     .font(.system(size: 12.5))
                     .foregroundColor(cloud.lastError == nil ? .secondary : .red)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("On your phone, open the Word Catcher web app and sign in with the same email.")
+                Text("On your phone, open the Word Catcher web app and sign in with the same email and password.")
                     .font(.system(size: 12.5))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -137,15 +138,22 @@ struct SyncView: View {
                         .keyboardShortcut(.defaultAction)
                 }
             } else {
-                Text("Sign in to send your words to your phone. Use the same email on the Mac and the phone. We'll email you a 6-digit code.")
+                Text(creating
+                     ? "Create your Word Catcher account. You'll use the same email and password on your phone."
+                     : "Sign in to send your words to your phone. Use the same email and password on the Mac and the phone.")
                     .font(.system(size: 13))
                     .fixedSize(horizontal: false, vertical: true)
                 TextField("Email", text: $email)
                     .textFieldStyle(.roundedBorder)
-                    .disabled(codeSent)
-                if codeSent {
-                    TextField("Code from the email", text: $code)
-                        .textFieldStyle(.roundedBorder)
+                    .textContentType(.username)
+                SecureField(creating ? "Choose a password (at least 6 characters)" : "Password", text: $password)
+                    .textFieldStyle(.roundedBorder)
+                    .textContentType(creating ? .newPassword : .password)
+                if let info {
+                    Text(info)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if let error {
                     Text(error)
@@ -154,18 +162,17 @@ struct SyncView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack {
-                    if codeSent {
-                        Button("Use a different email") {
-                            codeSent = false
-                            code = ""
-                            error = nil
-                        }
+                    Button(creating ? "I already have an account" : "New here? Create an account") {
+                        creating.toggle()
+                        error = nil
+                        info = nil
                     }
+                    .buttonStyle(.link)
                     Spacer()
                     if busy { ProgressView().controlSize(.small) }
-                    Button(codeSent ? "Sign in" : "Send code") { submit() }
+                    Button(creating ? "Create account" : "Sign in") { submit() }
                         .keyboardShortcut(.defaultAction)
-                        .disabled(busy || email.trimmed.isEmpty || (codeSent && code.trimmed.isEmpty))
+                        .disabled(busy || email.trimmed.isEmpty || password.count < 6)
                 }
             }
         }
@@ -183,18 +190,20 @@ struct SyncView: View {
     private func submit() {
         busy = true
         error = nil
+        info = nil
         let address = email.trimmed.lowercased()
-        let token = code.filter(\.isNumber)
         Task {
             do {
-                if codeSent {
-                    try await cloud.verify(email: address, code: token)
-                    code = ""
-                    codeSent = false
+                if creating {
+                    let signedIn = try await cloud.createAccount(email: address, password: password)
+                    if !signedIn {
+                        info = "Almost done: Supabase emailed you a link. Click it to confirm your email, then sign in here."
+                        creating = false
+                    }
                 } else {
-                    try await cloud.sendCode(to: address)
-                    codeSent = true
+                    try await cloud.signIn(email: address, password: password)
                 }
+                if cloud.isSignedIn { password = "" }
             } catch {
                 self.error = error.localizedDescription
             }
