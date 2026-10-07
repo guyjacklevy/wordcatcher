@@ -122,8 +122,8 @@ final class CloudSync: ObservableObject {
         let words = store.words.filter { !$0.synced }
         guard !words.isEmpty else { return }
         let iso = ISO8601DateFormatter()
-        let body: [[String: Any]] = words.map { word in
-            [
+        func row(_ word: SavedWord) -> [String: Any] {
+            var row: [String: Any] = [
                 "id": word.id.uuidString,
                 "lemma": word.lemma,
                 "lemma_key": word.key,
@@ -132,13 +132,20 @@ final class CloudSync: ObservableObject {
                 "hebrew": word.hebrew,
                 "meaning": word.meaning,
                 "example": word.example,
+                "direction": word.direction,
                 "created_at": iso.string(from: word.createdAt),
-                // First review is the day after you meet the word (your local day).
-                "due_on": Self.localDay(Calendar.current.date(byAdding: .day, value: 1, to: word.createdAt) ?? word.createdAt),
             ]
+            // Only a word's first push sets its first review: the day after you meet it (your local day).
+            if !word.pushedOnce {
+                row["due_on"] = Self.localDay(Calendar.current.date(byAdding: .day, value: 1, to: word.createdAt) ?? word.createdAt)
+            }
+            return row
         }
-        _ = try await rest("words", method: "POST", query: "on_conflict=id", body: body, prefer: "resolution=merge-duplicates,return=minimal")
-        store.markWordsSynced(Set(words.map(\.id)))
+        // Each batch needs the same keys in every row, so new and already-pushed words go separately.
+        for batch in [words.filter { !$0.pushedOnce }, words.filter { $0.pushedOnce }] where !batch.isEmpty {
+            _ = try await rest("words", method: "POST", query: "on_conflict=id", body: batch.map(row), prefer: "resolution=merge-duplicates,return=minimal")
+            store.markWordsSynced(Set(batch.map(\.id)))
+        }
     }
 
     private func pushEncounters() async throws {
@@ -154,6 +161,8 @@ final class CloudSync: ObservableObject {
                 "meaning_here": encounter.meaningHere,
                 "app": encounter.app,
                 "created_at": iso.string(from: encounter.date),
+                "source_text": encounter.sourceText ?? NSNull(),
+                "source_marked": encounter.sourceMarked ?? NSNull(),
             ]
         }
         _ = try await rest("encounters", method: "POST", query: "on_conflict=id", body: body, prefer: "resolution=ignore-duplicates,return=minimal")

@@ -9,14 +9,20 @@ struct Encounter: Codable, Hashable, Identifiable {
     var app: String
     var date: Date
     var synced: Bool
+    /// Writing lookups: what the user typed (English with Hebrew in it), and the Hebrew word in it.
+    var sourceText: String?
+    var sourceMarked: String?
 
-    init(marked: String, sentence: String?, meaningHere: String, app: String, date: Date) {
+    init(marked: String, sentence: String?, meaningHere: String, app: String, date: Date,
+         sourceText: String? = nil, sourceMarked: String? = nil) {
         id = UUID()
         self.marked = marked
         self.sentence = sentence
         self.meaningHere = meaningHere
         self.app = app
         self.date = date
+        self.sourceText = sourceText
+        self.sourceMarked = sourceMarked
         synced = false
     }
 
@@ -30,6 +36,8 @@ struct Encounter: Codable, Hashable, Identifiable {
         app = try c.decode(String.self, forKey: .app)
         date = try c.decode(Date.self, forKey: .date)
         synced = try c.decodeIfPresent(Bool.self, forKey: .synced) ?? false
+        sourceText = try c.decodeIfPresent(String.self, forKey: .sourceText)
+        sourceMarked = try c.decodeIfPresent(String.self, forKey: .sourceMarked)
     }
 }
 
@@ -45,6 +53,10 @@ struct SavedWord: Codable, Identifiable, Hashable {
     var createdAt: Date
     var encounters: [Encounter]
     var synced: Bool
+    /// "read": met while reading (review shows the English). "write": needed while writing (review asks for the English).
+    var direction: String
+    /// Whether the cloud already has this word, so later pushes don't reset its review schedule.
+    var pushedOnce: Bool
 
     var key: String { WordStore.key(for: lemma) }
 
@@ -61,6 +73,8 @@ struct SavedWord: Codable, Identifiable, Hashable {
         self.createdAt = createdAt
         self.encounters = encounters
         synced = false
+        direction = "read"
+        pushedOnce = false
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +90,8 @@ struct SavedWord: Codable, Identifiable, Hashable {
         createdAt = try c.decode(Date.self, forKey: .createdAt)
         encounters = try c.decode([Encounter].self, forKey: .encounters)
         synced = try c.decodeIfPresent(Bool.self, forKey: .synced) ?? false
+        direction = try c.decodeIfPresent(String.self, forKey: .direction) ?? "read"
+        pushedOnce = try c.decodeIfPresent(Bool.self, forKey: .pushedOnce) ?? synced
     }
 }
 
@@ -128,11 +144,19 @@ final class WordStore: ObservableObject {
 
     nonisolated static func key(for lemma: String) -> String { lemma.trimmed.lowercased() }
 
-    func save(_ info: WordInfo, sentence: String?, app: String) -> SaveOutcome {
+    func save(_ info: WordInfo, sentence: String?, app: String,
+              direction: String = "read", sourceText: String? = nil, sourceMarked: String? = nil) -> SaveOutcome {
         let key = Self.key(for: info.lemma)
-        let encounter = Encounter(marked: info.marked, sentence: sentence, meaningHere: info.meaningHere, app: app, date: Date())
+        let encounter = Encounter(marked: info.marked, sentence: sentence, meaningHere: info.meaningHere, app: app,
+                                  date: Date(), sourceText: sourceText, sourceMarked: sourceMarked)
 
         if let index = words.firstIndex(where: { $0.key == key }) {
+            // Needing a word while writing is the harder skill, so it decides how the word is reviewed.
+            if direction == "write", words[index].direction != "write" {
+                words[index].direction = "write"
+                words[index].synced = false
+                persist()
+            }
             if let sentence, words[index].encounters.contains(where: { $0.sentence == sentence }) {
                 return SaveOutcome(kind: .alreadyHad, key: key, count: words[index].encounters.count)
             }
@@ -141,11 +165,12 @@ final class WordStore: ObservableObject {
             return SaveOutcome(kind: .sentenceAdded, key: key, count: words[index].encounters.count)
         }
 
-        let word = SavedWord(
+        var word = SavedWord(
             id: UUID(), lemma: info.lemma, partOfSpeech: info.partOfSpeech, ipa: info.ipa,
             hebrew: info.hebrew, meaning: info.meaning, example: info.example,
             status: "new", createdAt: Date(), encounters: [encounter]
         )
+        word.direction = direction
         words.insert(word, at: 0)
         changed()
         return SaveOutcome(kind: .added, key: key, count: 1)
@@ -185,7 +210,10 @@ final class WordStore: ObservableObject {
     }
 
     func markWordsSynced(_ ids: Set<UUID>) {
-        for index in words.indices where ids.contains(words[index].id) { words[index].synced = true }
+        for index in words.indices where ids.contains(words[index].id) {
+            words[index].synced = true
+            words[index].pushedOnce = true
+        }
         persist()
     }
 

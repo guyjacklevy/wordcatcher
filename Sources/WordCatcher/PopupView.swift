@@ -37,6 +37,7 @@ struct PopupView: View {
                 } else {
                     MultiResultCard(model: model)
                 }
+            case .compose: ComposeCard(model: model)
             case .error: ErrorCard(model: model)
             }
         }
@@ -151,11 +152,13 @@ private struct LoadingCard: View {
             }
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("Translating…")
+                Text(model.loadingText)
                     .font(.system(size: 13))
                     .foregroundColor(.muted)
             }
-            if let sentence = model.sentence {
+            if model.writing {
+                EmptyView()
+            } else if let sentence = model.sentence {
                 Text(sentence)
                     .font(.system(size: 13, design: .serif).italic())
                     .foregroundColor(.muted)
@@ -363,6 +366,105 @@ private struct PickerCard: View {
             .disabled(model.pickedWords.isEmpty)
         }
         .padding(18)
+    }
+}
+
+/// Writing helper: the English for the Hebrew you typed, ready to put into your sentence.
+private struct ComposeCard: View {
+    @ObservedObject var model: PopupModel
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "pencil.line")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.brand)
+                    Text("Say it in English")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.muted)
+                    Spacer()
+                    RoundIconButton(systemName: "xmark", label: "Close", bordered: false, size: 28) { model.onClose() }
+                }
+
+                Text(model.composedSentence)
+                    .font(.system(size: 16, design: .serif))
+                    .foregroundColor(.ink)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+
+                ForEach(Array(model.composeItems.enumerated()), id: \.offset) { index, item in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .center, spacing: 8) {
+                            Text(item.hebrew)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.ink)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.muted)
+                            FlowLayout(spacing: 6) {
+                                ForEach(Array(item.choices.enumerated()), id: \.offset) { choiceIndex, choice in
+                                    let on = (model.composeChoice.indices.contains(index) ? model.composeChoice[index] : 0) == choiceIndex
+                                    Button { model.onChoose(index, choiceIndex) } label: {
+                                        Text(choice.word)
+                                            .font(.system(size: 14, weight: on ? .semibold : .regular))
+                                            .foregroundColor(.ink)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.marker : Color.white))
+                                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(on ? Color.markerBorder : Color.chipBorder, lineWidth: 1))
+                                            .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help(choice.note)
+                                }
+                            }
+                        }
+                        if let choice = model.chosen(index) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(choice.note.isEmpty ? choice.meaning : "\(choice.note) · \(choice.meaning)")
+                                    .font(.system(size: 12.5))
+                                    .foregroundColor(.body)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                                RoundIconButton(systemName: "speaker.wave.2", label: "Say \(choice.word)", size: 24) { Speaker.say(choice.word) }
+                            }
+                        }
+                    }
+                    .padding(.top, 10)
+                    .overlay(Rectangle().fill(Color.line).frame(height: 1), alignment: .top)
+                }
+
+                HStack(spacing: 8) {
+                    Button { model.onUseIt() } label: {
+                        Text("Use it")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(Color.brand))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Put this English into your text")
+                    Button { model.onCopy() } label: {
+                        Text(model.copied ? "Copied" : "Copy")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.ink)
+                            .frame(width: 96, height: 36)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
+                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.chipBorder, lineWidth: 1))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(EdgeInsets(top: 12, leading: 18, bottom: 16, trailing: 12))
+
+            if !model.composeItems.isEmpty {
+                SavedFooter(model: model, note: model.composeNote)
+            }
+        }
     }
 }
 

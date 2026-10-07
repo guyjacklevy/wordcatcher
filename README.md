@@ -10,6 +10,10 @@ Mark an English word anywhere on your Mac and get the Hebrew translation and its
 
 If an app won't share the sentence, select the whole sentence instead and press ⌃⌥T. Then tap every word you don't know.
 
+### Writing: say it in English
+
+Writing in English but only know a word in Hebrew? Type it in Hebrew inside your sentence ("We need to להגיש the proposal by Friday"), select the sentence and press ⌃⌥T. Word Catcher suggests the English that fits (in the right form, with alternatives and when to use each). **Use it** puts the English into your text; **Copy** puts it on the clipboard. A whole sentence in Hebrew is translated too. Words you look up this way are reviewed in reverse on the phone: your sentence with the Hebrew word, and you say the English.
+
 ## First run
 
 - **Accessibility permission**: macOS asks for it the first time. Word Catcher needs it to read what you selected. Turn it on in System Settings → Privacy & Security → Accessibility.
@@ -17,9 +21,9 @@ If an app won't share the sentence, select the whole sentence instead and press 
 
 ## Phone app (review)
 
-`web/` is the phone app: My words + the daily review with spaced repetition. It's a static site (no build step), deployed on Vercel with root directory `web`. On the phone: open it in Safari → Share → Add to Home Screen, then sign in with the same email as the Mac.
+`web/` is the phone app: My words + the daily review with spaced repetition. It's a static site (no build step), deployed on Vercel with root directory `web`. On the phone: open https://wordcatcher-web.vercel.app in Safari → Share → Add to Home Screen, then sign in with the same email and password as the Mac.
 
-Words sync through Supabase (project `wordcatcher`, id `aceyqtcljidnfzesqyjq`). Each account sees only its own rows (Row Level Security). Sign-in is a 6-digit code sent by email. The Supabase Magic Link and Confirm signup email templates must include `{{ .Token }}`.
+Words sync through Supabase (project `wordcatcher`, id `aceyqtcljidnfzesqyjq`). Each account sees only its own rows (Row Level Security). Sign-in is email + password, the same on the Mac and the phone.
 
 On the Mac: menu bar book icon → Sync with your phone… → sign in once. Saved words are pushed automatically.
 

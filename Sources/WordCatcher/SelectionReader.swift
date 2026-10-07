@@ -7,6 +7,7 @@ struct Capture {
     let selection: String
     let sentence: String?
     let appName: String
+    let app: NSRunningApplication?
 }
 
 /// Reads the current selection in the frontmost app.
@@ -26,19 +27,19 @@ enum SelectionReader {
 
         if let found = fromAccessibility(axApp) {
             Log.write("capture app=\(bundleID) method=\(found.method) sentence=\(found.sentence != nil)")
-            return Capture(selection: found.selection, sentence: found.sentence, appName: appName)
+            return Capture(selection: found.selection, sentence: found.sentence, appName: appName, app: app)
         }
 
         // The tree may need a moment right after we switched it on.
         try? await Task.sleep(nanoseconds: 150_000_000)
         if let found = fromAccessibility(axApp) {
             Log.write("capture app=\(bundleID) method=\(found.method)-retry sentence=\(found.sentence != nil)")
-            return Capture(selection: found.selection, sentence: found.sentence, appName: appName)
+            return Capture(selection: found.selection, sentence: found.sentence, appName: appName, app: app)
         }
 
         if let copied = await copySelectionViaClipboard() {
             Log.write("capture app=\(bundleID) method=clipboard sentence=false")
-            return Capture(selection: copied, sentence: nil, appName: appName)
+            return Capture(selection: copied, sentence: nil, appName: appName, app: app)
         }
 
         Log.write("capture app=\(bundleID) method=none")
@@ -224,7 +225,7 @@ enum SelectionReader {
         let before = pasteboard.changeCount
 
         await waitForShortcutRelease()
-        postCommandC()
+        postCommand(key: kVK_ANSI_C)
 
         var copied: String?
         for _ in 0..<25 {
@@ -249,9 +250,25 @@ enum SelectionReader {
         }
     }
 
-    private static func postCommandC() {
+    /// Puts `text` in place of the selection in `app`, through the clipboard, then restores the clipboard.
+    static func replaceSelection(with text: String, in app: NSRunningApplication?) async {
+        let pasteboard = NSPasteboard.general
+        let saved = savePasteboard(pasteboard)
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+
+        app?.activate()
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        postCommand(key: kVK_ANSI_V)
+
+        // Give the app time to read the clipboard before putting the old contents back.
+        try? await Task.sleep(nanoseconds: 700_000_000)
+        restorePasteboard(pasteboard, saved)
+    }
+
+    private static func postCommand(key keyCode: Int) {
         let source = CGEventSource(stateID: .combinedSessionState)
-        let key = CGKeyCode(kVK_ANSI_C)
+        let key = CGKeyCode(keyCode)
         let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
         down?.flags = .maskCommand

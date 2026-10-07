@@ -138,6 +138,20 @@ function showView(name) {
 
 /** The sentence to learn from: the latest one you met it in, or Claude's example. */
 function contextFor(word) {
+  // Words you needed while writing are practiced in reverse: your Hebrew in, the English out.
+  const wrote = word.direction === 'write' && word.encounters.find((e) => e.source_text);
+  if (wrote) {
+    return {
+      writing: true,
+      sentence: wrote.sentence || word.example,
+      marks: [wrote.marked, word.lemma],
+      typed: wrote.source_text,
+      typedMark: wrote.source_marked || word.hebrew,
+      source: `You wrote this in ${wrote.app || 'your Mac'} · ${shortDate(wrote.created_at)}`,
+      meaningHere: '',
+      fromExample: false,
+    };
+  }
   const met = word.encounters.find((e) => e.sentence);
   if (met) {
     return {
@@ -154,6 +168,7 @@ function contextFor(word) {
 function metaFor(word) {
   const last = word.encounters[0];
   const parts = [last?.app || 'Mac', shortDate(last?.created_at || word.created_at)];
+  if (last?.source_text) parts.push('while writing');
   if (word.encounters.length > 1) parts.push(`seen ${word.encounters.length}×`);
   return parts.join(' · ');
 }
@@ -242,7 +257,7 @@ async function openWords() {
 async function loadWords() {
   const { data, error } = await sb
     .from('words')
-    .select('id, lemma, part_of_speech, ipa, hebrew, meaning, example, status, step, due_on, reviews, lapses, created_at, encounters(id, marked, sentence, meaning_here, app, created_at)')
+    .select('id, lemma, part_of_speech, ipa, hebrew, meaning, example, status, direction, step, due_on, reviews, lapses, created_at, encounters(id, marked, sentence, meaning_here, app, created_at, source_text, source_marked)')
     .order('created_at', { ascending: false });
   if (error) {
     toast('Couldn’t load your words. Check your connection.');
@@ -350,6 +365,7 @@ function wordDetails(word, id) {
     sentences.length > 0 && el('div', { class: 'detail-block' },
       el('span', { class: 'label', text: sentences.length === 1 ? 'Where you met it' : `Where you met it (${sentences.length}×)` }),
       ...sentences.map((e) => el('div', {},
+        e.source_text && el('p', { class: 'meta' }, 'You wrote: ', highlighted(e.source_text, e.source_marked)),
         el('p', { class: 'detail-sentence' }, highlighted(e.sentence, e.marked, word.lemma)),
         el('span', { class: 'meta', text: `${e.app || 'Mac'} · ${shortDate(e.created_at)}${e.meaning_here ? ` · ${e.meaning_here}` : ''}` })))),
     word.example && el('div', { class: 'detail-block' },
@@ -407,15 +423,30 @@ function renderCard() {
   const ctx = contextFor(word);
   if (!state.flipped) {
     $('front-source').textContent = ctx.source;
-    $('front-sentence').replaceChildren(highlighted(ctx.sentence, ...ctx.marks));
-    $('front-prompt').textContent = ctx.fromExample ? `What does “${word.lemma}” mean?` : `What does “${word.lemma}” mean here?`;
+    // On writing cards, the speaker and the button wording would give the answer away.
+    document.querySelector('#review-front [data-speak]').hidden = Boolean(ctx.writing);
+    $('btn-flip').textContent = ctx.writing ? 'Show the English' : 'Show meaning';
+    if (ctx.writing) {
+      $('front-sentence').replaceChildren(highlighted(ctx.typed, ctx.typedMark));
+      $('front-prompt').textContent = `How do you say “${ctx.typedMark}” in English here?`;
+    } else {
+      $('front-sentence').replaceChildren(highlighted(ctx.sentence, ...ctx.marks));
+      $('front-prompt').textContent = ctx.fromExample ? `What does “${word.lemma}” mean?` : `What does “${word.lemma}” mean here?`;
+    }
     return;
   }
 
   $('back-source').textContent = ctx.source;
   $('back-sentence').replaceChildren(highlighted(ctx.sentence, ...ctx.marks));
-  $('back-hebrew').textContent = word.hebrew;
-  $('back-lemma').textContent = word.lemma;
+  // Reading cards lead with the Hebrew; writing cards lead with the English you were looking for.
+  const big = $('back-hebrew');
+  const small = $('back-lemma');
+  big.textContent = ctx.writing ? word.lemma : word.hebrew;
+  big.setAttribute('dir', ctx.writing ? 'ltr' : 'rtl');
+  big.setAttribute('lang', ctx.writing ? 'en' : 'he');
+  big.style.textAlign = ctx.writing ? 'left' : '';
+  small.textContent = ctx.writing ? word.hebrew : word.lemma;
+  small.setAttribute('dir', ctx.writing ? 'rtl' : 'ltr');
   $('back-pos').textContent = word.part_of_speech;
   $('back-ipa').textContent = word.ipa;
   $('back-meaning').textContent = ctx.meaningHere ? `${word.meaning} Here: ${ctx.meaningHere}` : word.meaning;

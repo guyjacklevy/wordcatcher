@@ -53,6 +53,9 @@ final class PopupController {
         model.onTranslatePicked = { [weak self] in self?.translatePicked() }
         model.onToggleSaved = { [weak self] in self?.toggleSaved() }
         model.onChangeWords = { [weak self] in self?.backToPicker() }
+        model.onChoose = { [weak self] item, choice in self?.choose(item: item, choice: choice) }
+        model.onUseIt = { [weak self] in self?.useComposed() }
+        model.onCopy = { [weak self] in self?.copyComposed() }
         model.onErrorAction = { [weak self] action in
             self?.close()
             switch action {
@@ -68,8 +71,14 @@ final class PopupController {
         self.capture = capture
         model.tokens = []
         model.picked = []
+        model.writing = false
+        model.loadingText = "Translating…"
 
-        if capture.selection.wordCount > 4 {
+        if capture.selection.containsHebrew {
+            // Writing: Hebrew inside English (or a Hebrew sentence) → the English that fits.
+            show(at: point)
+            compose(text: capture.selection, sentence: capture.sentence)
+        } else if capture.selection.wordCount > 4 {
             // A whole sentence was selected: let the user tap the words they don't know.
             model.sentence = SentenceFinder.clean(capture.selection) ?? capture.selection
             model.tokens = PopupModel.tokenize(model.sentence ?? "")
@@ -115,6 +124,97 @@ final class PopupController {
         }
     }
 
+    // MARK: - Writing helper
+
+    private var composeOutcomes: [Int: SaveOutcome] = [:]
+
+    private func compose(text: String, sentence: String?) {
+        model.writing = true
+        model.loadingText = "Finding the English…"
+        model.marked = [text]
+        model.sentence = sentence
+        model.composeSelection = text
+        model.composeContext = sentence
+        model.copied = false
+        composeOutcomes = [:]
+        setPhase(.loading)
+
+        translateTask?.cancel()
+        translateTask = Task { [weak self] in
+            do {
+                let result = try await Translator.compose(text: text, sentence: sentence)
+                guard let self, !Task.isCancelled else { return }
+                self.model.composeTemplate = result.template
+                self.model.composeItems = result.items
+                self.model.composeChoice = result.items.map { _ in 0 }
+                for index in result.items.indices { self.saveComposed(item: index) }
+                self.model.isSaved = true
+                self.updateComposeNote()
+                self.setPhase(.compose)
+                Log.write("compose items=\(result.items.count) app=\(self.capture?.app?.bundleIdentifier ?? "?")")
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                Log.write("compose error: \(error.localizedDescription)")
+                self.model.errorMessage = error.localizedDescription
+                self.model.errorAction = (error as? TranslatorError).flatMap { if case .missingKey = $0 { return .apiKey } else { return nil } }
+                self.setPhase(.error)
+            }
+        }
+    }
+
+    /// Saves the chosen English for one Hebrew word, to be practiced in reverse on the phone.
+    private func saveComposed(item index: Int) {
+        guard let choice = model.chosen(index) else { return }
+        let item = model.composeItems[index]
+        let info = WordInfo(
+            marked: choice.fitted, lemma: choice.word, partOfSpeech: item.partOfSpeech, ipa: choice.ipa,
+            hebrew: item.hebrew, meaning: choice.meaning, meaningHere: choice.note, example: choice.example
+        )
+        composeOutcomes[index] = store.save(
+            info, sentence: model.composedSentencePlain, app: capture?.appName ?? "",
+            direction: "write", sourceText: model.composeContext ?? model.composeSelection, sourceMarked: item.hebrew
+        )
+    }
+
+    private func choose(item: Int, choice: Int) {
+        guard model.composeChoice.indices.contains(item), model.composeChoice[item] != choice else { return }
+        if model.isSaved, let previous = composeOutcomes[item] { store.undo(previous, sentence: model.composedSentencePlain) }
+        model.composeChoice[item] = choice
+        model.copied = false
+        if model.isSaved { saveComposed(item: item) }
+        updateComposeNote()
+        refitSoon()
+    }
+
+    private func updateComposeNote() {
+        let added = composeOutcomes.values.filter { $0.kind == .added }.count
+        model.composeNote = added > 0
+            ? "Saved to your words · you'll practice saying it"
+            : "Already in your words · you'll practice saying it"
+    }
+
+    private func useComposed() {
+        let text = model.composedText
+        let app = capture?.app
+        closeTimer?.invalidate()
+        removeMonitors()
+        panel?.orderOut(nil) // give the keyboard back to your app before pasting
+        model.phase = .idle
+        Log.write("compose used app=\(app?.bundleIdentifier ?? "?")")
+        Task { await SelectionReader.replaceSelection(with: text, in: app) }
+    }
+
+    private func copyComposed() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(model.composedText, forType: .string)
+        model.copied = true
+        scheduleAutoClose()
+    }
+
+    private func refitSoon() {
+        DispatchQueue.main.async { [weak self] in self?.refit() }
+    }
+
     private func translatePicked() {
         let words = model.pickedWords
         guard !words.isEmpty else { return }
@@ -127,6 +227,18 @@ final class PopupController {
     }
 
     private func toggleSaved() {
+        if model.phase == .compose {
+            if model.isSaved {
+                for outcome in composeOutcomes.values { store.undo(outcome, sentence: model.composedSentencePlain) }
+                composeOutcomes = [:]
+                model.isSaved = false
+            } else {
+                for index in model.composeItems.indices { saveComposed(item: index) }
+                model.isSaved = true
+                updateComposeNote()
+            }
+            return
+        }
         if model.isSaved {
             for row in model.rows { store.undo(row.outcome, sentence: model.sentence) }
             model.isSaved = false
