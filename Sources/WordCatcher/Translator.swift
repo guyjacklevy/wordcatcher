@@ -171,15 +171,29 @@ enum Translator {
 
     static func translateToHebrew(_ text: String) async throws -> String {
         struct Payload: Decodable { let translation: String }
-        let payload: Payload = try await ask(system: hebrewPrompt, user: "Text: \"\(text)\"", schema: object(["translation": string]))
-        guard !payload.translation.trimmed.isEmpty else { throw TranslatorError.unreadable }
+        let schema = object(["translation": string])
+        var payload: Payload = try await ask(system: hebrewPrompt, user: "English text: \"\(text)\"", schema: schema)
+        // Guard against an answer in Latin letters ("bhor mishpat…"): ask once more, insisting on Hebrew script.
+        if !payload.translation.containsHebrew {
+            Log.write("hebrew translation came back without Hebrew letters; retrying")
+            payload = try await ask(
+                system: hebrewPrompt,
+                user: "English text: \"\(text)\"\n\nWrite the translation in Hebrew letters (א-ת), not in Latin letters.",
+                schema: schema
+            )
+        }
+        guard payload.translation.containsHebrew else { throw TranslatorError.unreadable }
         return payload.translation
     }
 
     private static let hebrewPrompt = """
-    Translate the Text into natural, fluent Hebrew, the way an Israeli professional would say it. \
-    Keep the meaning and tone exactly; don't add or drop anything. Keep names, products and code in English. \
-    Write without niqqud. translation: the Hebrew translation only.
+    Translate the English text into natural, fluent Hebrew, the way an Israeli professional would say it. \
+    Write the Hebrew in Hebrew letters (א-ת), never transliterated into Latin letters, and without niqqud. \
+    Keep the meaning and tone exactly; don't add or drop anything. Keep names, products and code in English.
+
+    Example: "Please send me the report by Thursday." → translation: "בבקשה תשלח לי את הדוח עד יום חמישי."
+
+    translation: the Hebrew translation only.
     """
 
     // MARK: - HTTP
