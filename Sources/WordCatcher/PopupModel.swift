@@ -44,6 +44,17 @@ final class PopupModel: ObservableObject {
     @Published var composeContext: String?
     @Published var composeNote = ""
     @Published var copied = false
+    /// A whole Hebrew sentence → English: words are offered for saving, not saved automatically.
+    @Published var wholeTranslation = false
+
+    // A whole English sentence → Hebrew, shown above the word picker.
+    @Published var sentenceTranslation: String?
+    @Published var translatingSentence = false
+    @Published var translationCopied = false
+
+    // Footer wording while nothing is saved.
+    @Published var unsavedNote = "Removed. It's not in your words."
+    @Published var saveLabel = "Save it"
 
     var onClose: () -> Void = {}
     var onTranslatePicked: () -> Void = {}
@@ -53,6 +64,7 @@ final class PopupModel: ObservableObject {
     var onChoose: (Int, Int) -> Void = { _, _ in }
     var onUseIt: () -> Void = {}
     var onCopy: () -> Void = {}
+    var onCopyTranslation: () -> Void = {}
 
     func chosen(_ item: Int) -> ComposeChoice? {
         guard composeItems.indices.contains(item) else { return nil }

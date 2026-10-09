@@ -120,11 +120,12 @@ private struct SavedFooter: View {
                 }
                 LinkButton(title: "Undo") { model.onToggleSaved() }
             } else {
-                Text("Removed. It's not in your words.")
+                Text(model.unsavedNote)
                     .font(.system(size: 12.5))
                     .foregroundColor(.muted)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
-                LinkButton(title: "Save it") { model.onToggleSaved() }
+                LinkButton(title: model.saveLabel) { model.onToggleSaved() }
             }
         }
         .padding(.leading, 18)
@@ -312,18 +313,49 @@ private struct PickerCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Which words don't you know?")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.ink)
-                    Text("Tap as many as you want. Each one is saved with this sentence.")
-                        .font(.system(size: 12.5))
-                        .foregroundColor(.muted)
-                        .fixedSize(horizontal: false, vertical: true)
+            // The whole sentence in Hebrew.
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center) {
+                    SectionLabel(text: "The sentence in Hebrew")
+                    Spacer()
+                    if model.sentenceTranslation != nil {
+                        LinkButton(title: model.translationCopied ? "Copied" : "Copy") { model.onCopyTranslation() }
+                    }
+                    RoundIconButton(systemName: "xmark", label: "Close", bordered: false, size: 28) { model.onClose() }
                 }
-                Spacer()
-                RoundIconButton(systemName: "xmark", label: "Close", bordered: false, size: 28) { model.onClose() }
+                if let translation = model.sentenceTranslation {
+                    Text(translation)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.ink)
+                        .lineSpacing(3)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                } else if model.translatingSentence {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Translating…")
+                            .font(.system(size: 13))
+                            .foregroundColor(.muted)
+                    }
+                } else {
+                    Text("Couldn't translate this sentence.")
+                        .font(.system(size: 13))
+                        .foregroundColor(.muted)
+                }
+            }
+            .padding(.bottom, 12)
+            .overlay(Rectangle().fill(Color.line).frame(height: 1), alignment: .bottom)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Which words don't you know?")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.ink)
+                Text("Tap as many as you want. Each one is saved with this sentence.")
+                    .font(.system(size: 12.5))
+                    .foregroundColor(.muted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             ScrollView {
@@ -380,7 +412,7 @@ private struct ComposeCard: View {
                     Image(systemName: "pencil.line")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.brand)
-                    Text("Say it in English")
+                    Text(model.wholeTranslation ? "In English" : "Say it in English")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.muted)
                     Spacer()
@@ -393,6 +425,11 @@ private struct ComposeCard: View {
                     .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
+
+                if model.wholeTranslation, !model.composeItems.isEmpty {
+                    SectionLabel(text: "Words worth learning")
+                        .padding(.top, 2)
+                }
 
                 ForEach(Array(model.composeItems.enumerated()), id: \.offset) { index, item in
                     VStack(alignment: .leading, spacing: 6) {

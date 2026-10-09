@@ -56,6 +56,7 @@ final class PopupController {
         model.onChoose = { [weak self] item, choice in self?.choose(item: item, choice: choice) }
         model.onUseIt = { [weak self] in self?.useComposed() }
         model.onCopy = { [weak self] in self?.copyComposed() }
+        model.onCopyTranslation = { [weak self] in self?.copySentenceTranslation() }
         model.onErrorAction = { [weak self] action in
             self?.close()
             switch action {
@@ -73,17 +74,26 @@ final class PopupController {
         model.picked = []
         model.writing = false
         model.loadingText = "Translating…"
+        model.sentenceTranslation = nil
+        model.translatingSentence = false
+        model.translationCopied = false
+        model.wholeTranslation = false
+        model.unsavedNote = "Removed. It's not in your words."
+        model.saveLabel = "Save it"
+        sentenceTask?.cancel()
 
         if capture.selection.containsHebrew {
-            // Writing: Hebrew inside English (or a Hebrew sentence) → the English that fits.
+            // Writing: Hebrew inside English → the English that fits.
+            // A Hebrew sentence → the whole sentence in English.
             show(at: point)
-            compose(text: capture.selection, sentence: capture.sentence)
+            compose(text: capture.selection, sentence: capture.sentence, whole: capture.selection.isMostlyHebrew)
         } else if capture.selection.wordCount > 4 {
-            // A whole sentence was selected: let the user tap the words they don't know.
+            // A whole English sentence: show it in Hebrew, and let the user tap the words they don't know.
             model.sentence = SentenceFinder.clean(capture.selection) ?? capture.selection
             model.tokens = PopupModel.tokenize(model.sentence ?? "")
             setPhase(.picker)
             show(at: point)
+            translateSentence(model.sentence ?? capture.selection)
         } else {
             show(at: point)
             translate(marked: [capture.selection], sentence: capture.sentence)
@@ -124,13 +134,37 @@ final class PopupController {
         }
     }
 
+    // MARK: - Sentence translation (English → Hebrew)
+
+    private var sentenceTask: Task<Void, Never>?
+
+    /// Runs alongside the word picker, so tapping words never waits for it.
+    private func translateSentence(_ text: String) {
+        model.translatingSentence = true
+        sentenceTask = Task { [weak self] in
+            let translation = try? await Translator.translateToHebrew(text)
+            guard let self, !Task.isCancelled else { return }
+            self.model.sentenceTranslation = translation
+            self.model.translatingSentence = false
+            self.refitSoon()
+        }
+    }
+
+    private func copySentenceTranslation() {
+        guard let translation = model.sentenceTranslation else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(translation, forType: .string)
+        model.translationCopied = true
+    }
+
     // MARK: - Writing helper
 
     private var composeOutcomes: [Int: SaveOutcome] = [:]
 
-    private func compose(text: String, sentence: String?) {
+    private func compose(text: String, sentence: String?, whole: Bool = false) {
         model.writing = true
-        model.loadingText = "Finding the English…"
+        model.wholeTranslation = whole
+        model.loadingText = whole ? "Translating into English…" : "Finding the English…"
         model.marked = [text]
         model.sentence = sentence
         model.composeSelection = text
@@ -147,8 +181,17 @@ final class PopupController {
                 self.model.composeTemplate = result.template
                 self.model.composeItems = result.items
                 self.model.composeChoice = result.items.map { _ in 0 }
-                for index in result.items.indices { self.saveComposed(item: index) }
-                self.model.isSaved = true
+                if whole {
+                    // A translation: offer the words, don't fill the list with them.
+                    self.model.isSaved = false
+                    self.model.unsavedNote = result.items.count == 1 ? "Want to practice this word?" : "Want to practice these words?"
+                    self.model.saveLabel = result.items.count == 1 ? "Save it" : "Save them"
+                } else {
+                    for index in result.items.indices { self.saveComposed(item: index) }
+                    self.model.isSaved = true
+                    self.model.unsavedNote = "Removed. It's not in your words."
+                    self.model.saveLabel = "Save it"
+                }
                 self.updateComposeNote()
                 self.setPhase(.compose)
                 Log.write("compose items=\(result.items.count) app=\(self.capture?.app?.bundleIdentifier ?? "?")")
@@ -232,6 +275,8 @@ final class PopupController {
                 for outcome in composeOutcomes.values { store.undo(outcome, sentence: model.composedSentencePlain) }
                 composeOutcomes = [:]
                 model.isSaved = false
+                model.unsavedNote = "Removed. It's not in your words."
+                model.saveLabel = model.composeItems.count == 1 ? "Save it" : "Save them"
             } else {
                 for index in model.composeItems.indices { saveComposed(item: index) }
                 model.isSaved = true
@@ -299,6 +344,7 @@ final class PopupController {
 
     func close() {
         translateTask?.cancel()
+        sentenceTask?.cancel()
         closeTimer?.invalidate()
         removeMonitors()
         panel?.orderOut(nil)

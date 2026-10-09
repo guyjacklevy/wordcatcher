@@ -8,11 +8,11 @@ Mark an English word anywhere on your Mac and get the Hebrew translation and its
 2. Press **⌃⌥T** (Control + Option + T).
 3. A card shows the Hebrew translation and what the word means in that sentence. It's saved automatically. Use Undo if you didn't mean it.
 
-If an app won't share the sentence, select the whole sentence instead and press ⌃⌥T. Then tap every word you don't know.
+Select a whole English sentence and press ⌃⌥T to see it in Hebrew (with Copy), and tap any words you don't know to save them. This also works when an app won't share the sentence around a single word.
 
 ### Writing: say it in English
 
-Writing in English but only know a word in Hebrew? Type it in Hebrew inside your sentence ("We need to להגיש the proposal by Friday"), select the sentence and press ⌃⌥T. Word Catcher suggests the English that fits (in the right form, with alternatives and when to use each). **Use it** puts the English into your text; **Copy** puts it on the clipboard. A whole sentence in Hebrew is translated too. Words you look up this way are reviewed in reverse on the phone: your sentence with the Hebrew word, and you say the English.
+Writing in English but only know a word in Hebrew? Type it in Hebrew inside your sentence ("We need to להגיש the proposal by Friday"), select the sentence and press ⌃⌥T. Word Catcher suggests the English that fits (in the right form, with alternatives and when to use each). **Use it** puts the English into your text; **Copy** puts it on the clipboard. A whole sentence in Hebrew is translated into English too (Use it / Copy); its key words are offered, and saved only if you tap Save. Words you look up this way are reviewed in reverse on the phone: your sentence with the Hebrew word, and you say the English.
 
 ## First run
 

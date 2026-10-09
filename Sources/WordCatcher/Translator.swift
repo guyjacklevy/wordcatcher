@@ -142,7 +142,7 @@ enum Translator {
     English goes. Keep the user's own English words and style; change only what the replaced words require \
     (for example an article or a preposition next to them). If the Text is only the Hebrew word or words, \
     the template is just "{0}" (or "{0} {1}" and so on), using the surrounding sentence to choose the meaning and form.
-    - items: one per Hebrew word or phrase, in the order they appear. If the Text is entirely Hebrew, translate \
+    - items: one per Hebrew word or phrase, in the order they appear. If the Text is entirely or mostly Hebrew, translate \
     it into the template and make items for the 1 to 3 words or expressions most worth learning.
       - hebrew: the Hebrew exactly as it appears in the Text.
       - part_of_speech: noun, verb, adjective, adverb, phrase, or idiom.
@@ -166,6 +166,21 @@ enum Translator {
             ])),
         ])),
     ])
+
+    // MARK: - Reading: a whole English sentence in Hebrew
+
+    static func translateToHebrew(_ text: String) async throws -> String {
+        struct Payload: Decodable { let translation: String }
+        let payload: Payload = try await ask(system: hebrewPrompt, user: "Text: \"\(text)\"", schema: object(["translation": string]))
+        guard !payload.translation.trimmed.isEmpty else { throw TranslatorError.unreadable }
+        return payload.translation
+    }
+
+    private static let hebrewPrompt = """
+    Translate the Text into natural, fluent Hebrew, the way an Israeli professional would say it. \
+    Keep the meaning and tone exactly; don't add or drop anything. Keep names, products and code in English. \
+    Write without niqqud. translation: the Hebrew translation only.
+    """
 
     // MARK: - HTTP
 
@@ -231,4 +246,18 @@ enum Translator {
 extension String {
     /// True when the text contains Hebrew letters.
     var containsHebrew: Bool { range(of: "[\\u0590-\\u05FF]", options: .regularExpression) != nil }
+
+    /// True when Hebrew letters outnumber Latin ones: a Hebrew sentence, maybe with an English term in it.
+    var isMostlyHebrew: Bool {
+        var hebrew = 0
+        var latin = 0
+        for scalar in unicodeScalars {
+            if (0x05D0...0x05EA).contains(scalar.value) {
+                hebrew += 1
+            } else if (0x41...0x5A).contains(scalar.value) || (0x61...0x7A).contains(scalar.value) {
+                latin += 1
+            }
+        }
+        return hebrew > 0 && hebrew >= latin
+    }
 }
