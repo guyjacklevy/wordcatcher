@@ -8,6 +8,8 @@ struct Capture {
     let sentence: String?
     let appName: String
     let app: NSRunningApplication?
+    /// True when the selection is in a box you can type in: probably your own writing.
+    var editable = false
 }
 
 /// Reads the current selection in the frontmost app.
@@ -26,15 +28,15 @@ enum SelectionReader {
         AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
 
         if let found = fromAccessibility(axApp) {
-            Log.write("capture app=\(bundleID) method=\(found.method) sentence=\(found.sentence != nil)")
-            return Capture(selection: found.selection, sentence: found.sentence, appName: appName, app: app)
+            Log.write("capture app=\(bundleID) method=\(found.method) sentence=\(found.sentence != nil) editable=\(found.editable)")
+            return Capture(selection: found.selection, sentence: found.sentence, appName: appName, app: app, editable: found.editable)
         }
 
         // The tree may need a moment right after we switched it on.
         try? await Task.sleep(nanoseconds: 150_000_000)
         if let found = fromAccessibility(axApp) {
-            Log.write("capture app=\(bundleID) method=\(found.method)-retry sentence=\(found.sentence != nil)")
-            return Capture(selection: found.selection, sentence: found.sentence, appName: appName, app: app)
+            Log.write("capture app=\(bundleID) method=\(found.method)-retry sentence=\(found.sentence != nil) editable=\(found.editable)")
+            return Capture(selection: found.selection, sentence: found.sentence, appName: appName, app: app, editable: found.editable)
         }
 
         if let copied = await copySelectionViaClipboard() {
@@ -52,6 +54,7 @@ enum SelectionReader {
         let selection: String
         let sentence: String?
         let method: String
+        var editable = false
     }
 
     private static func fromAccessibility(_ axApp: AXUIElement) -> Found? {
@@ -73,7 +76,7 @@ enum SelectionReader {
                 method += "+" + context.method
             }
             if sentence == nil { Log.write("no sentence: \(describe(focused))") }
-            return Found(selection: selected.trimmed, sentence: sentence, method: method)
+            return Found(selection: selected.trimmed, sentence: sentence, method: method, editable: isEditable(focused))
         }
 
         // 2. Web content: walk up from the focused element until one answers text-marker queries.
@@ -84,7 +87,8 @@ enum SelectionReader {
                let selected = paramString(element, "AXStringForTextMarkerRange", markerRange),
                !selected.trimmed.isEmpty {
                 let context = markerContext(on: element, markerRange: markerRange, selected: selected)
-                return Found(selection: selected.trimmed, sentence: context?.sentence, method: "ax-marker" + (context.map { "+" + $0.method } ?? ""))
+                return Found(selection: selected.trimmed, sentence: context?.sentence,
+                             method: "ax-marker" + (context.map { "+" + $0.method } ?? ""), editable: isEditable(focused))
             }
             current = self.element(element, kAXParentAttribute)
         }
@@ -130,6 +134,15 @@ enum SelectionReader {
             }
         }
         return nil
+    }
+
+    /// Text fields, text areas, and editable web content (Slack's and Claude's message boxes, Gmail's compose).
+    private static func isEditable(_ element: AXUIElement) -> Bool {
+        let role = string(element, kAXRoleAttribute) ?? ""
+        if ["AXTextArea", "AXTextField", "AXComboBox", "AXSearchField"].contains(role) { return true }
+        if attr(element, "AXEditableAncestor") != nil { return true }
+        var settable: DarwinBoolean = false
+        return AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success && settable.boolValue
     }
 
     /// Chromium (Claude, Slack, Chrome) doesn't answer AXStartTextMarkerForTextMarkerRange; the system function does the same job.

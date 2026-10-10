@@ -21,7 +21,7 @@ enum ErrorAction {
 /// Everything the popup shows. The controller changes it; the SwiftUI view draws it.
 @MainActor
 final class PopupModel: ObservableObject {
-    enum Phase { case idle, loading, picker, results, compose, error }
+    enum Phase { case idle, loading, picker, results, compose, polish, error }
 
     @Published var phase: Phase = .idle
     @Published var marked: [String] = []
@@ -52,6 +52,14 @@ final class PopupModel: ObservableObject {
     @Published var translatingSentence = false
     @Published var translationCopied = false
 
+    // Improve my English.
+    @Published var polishOriginal = ""
+    @Published var polishResult: PolishResult?
+    @Published var polishStyle: String?
+    @Published var polishing = false
+    /// English sentences can be read (translate) or your own writing (improve); the card offers the other one.
+    @Published var canSwitchMode = false
+
     // Footer wording while nothing is saved.
     @Published var unsavedNote = "Removed. It's not in your words."
     @Published var saveLabel = "Save it"
@@ -65,6 +73,67 @@ final class PopupModel: ObservableObject {
     var onUseIt: () -> Void = {}
     var onCopy: () -> Void = {}
     var onCopyTranslation: () -> Void = {}
+    var onPolishStyle: (String?) -> Void = { _ in }
+    var onSwitchToPolish: () -> Void = {}
+    var onSwitchToTranslate: () -> Void = {}
+
+    /// The improved text, with the words that changed marked.
+    var polishedText: AttributedString {
+        Self.highlightChanges(from: polishOriginal, to: polishResult?.improved ?? "")
+    }
+
+    /// Marks the words in `new` that aren't in `old` (a word-level longest-common-subsequence diff).
+    nonisolated static func highlightChanges(from old: String, to new: String) -> AttributedString {
+        func words(_ text: String) -> [(range: Range<String.Index>, key: String)] {
+            var found: [(Range<String.Index>, String)] = []
+            var start = text.startIndex
+            while start < text.endIndex {
+                if text[start].isWhitespace { start = text.index(after: start); continue }
+                var end = start
+                while end < text.endIndex, !text[end].isWhitespace { end = text.index(after: end) }
+                found.append((start..<end, text[start..<end].lowercased()))
+                start = end
+            }
+            return found
+        }
+        let a = words(old).map(\.key)
+        let bWords = words(new)
+        let b = bWords.map(\.key)
+        guard a.count * b.count < 400_000 else { return AttributedString(new) } // very long text: no marks
+
+        var table = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
+        for i in stride(from: a.count - 1, through: 0, by: -1) {
+            for j in stride(from: b.count - 1, through: 0, by: -1) {
+                table[i][j] = a[i] == b[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
+            }
+        }
+        var kept = Set<Int>()
+        var i = 0
+        var j = 0
+        while i < a.count, j < b.count {
+            if a[i] == b[j] {
+                kept.insert(j)
+                i += 1
+                j += 1
+            } else if table[i + 1][j] >= table[i][j + 1] {
+                i += 1
+            } else {
+                j += 1
+            }
+        }
+
+        var result = AttributedString()
+        var cursor = new.startIndex
+        for (index, word) in bWords.enumerated() {
+            result.append(AttributedString(String(new[cursor..<word.range.lowerBound])))
+            var piece = AttributedString(String(new[word.range]))
+            if !kept.contains(index) { piece.backgroundColor = .marker }
+            result.append(piece)
+            cursor = word.range.upperBound
+        }
+        result.append(AttributedString(String(new[cursor...])))
+        return result
+    }
 
     func chosen(_ item: Int) -> ComposeChoice? {
         guard composeItems.indices.contains(item) else { return nil }

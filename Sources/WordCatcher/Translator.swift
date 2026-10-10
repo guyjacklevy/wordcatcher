@@ -45,6 +45,20 @@ struct ComposeItem: Codable, Hashable {
     }
 }
 
+/// One edit Claude made to the user's English, and why.
+struct PolishChange: Codable, Hashable {
+    let before: String
+    let after: String
+    let why: String
+}
+
+/// The user's English, improved.
+struct PolishResult: Codable {
+    let improved: String
+    let verdict: String
+    let changes: [PolishChange]
+}
+
 /// The selected text in English, with {0}, {1}… where each item's English goes.
 struct ComposeResult: Codable {
     let template: String
@@ -165,6 +179,40 @@ enum Translator {
                 "word": string, "fitted": string, "note": string, "ipa": string, "meaning": string, "example": string,
             ])),
         ])),
+    ])
+
+    // MARK: - Writing: improve English the user wrote
+
+    static func polish(_ text: String, style: String? = nil) async throws -> PolishResult {
+        var user = "Text:\n\(text)"
+        if let style { user += "\n\nAlso make it \(style)." }
+        let result: PolishResult = try await ask(system: polishPrompt, user: user, schema: polishSchema)
+        guard !result.improved.trimmed.isEmpty else { throw TranslatorError.unreadable }
+        return result
+    }
+
+    private static let polishPrompt = """
+    You are an editor for a native Hebrew speaker who writes English at work (Slack, email, documents). \
+    Improve their text so it reads like a fluent professional wrote it: fix grammar, word choice, and flow.
+
+    Keep their meaning, facts, names, and formatting (line breaks, lists, emoji). Keep roughly the same \
+    length and tone unless asked otherwise. Don't add new content. If the text is already good, change \
+    little or nothing.
+
+    Fields:
+    - improved: the improved text.
+    - verdict: one short sentence about what you did, in simple English ("Two grammar fixes and a smoother \
+    second sentence." or "Already good. One small tweak.").
+    - changes: up to 5 of the changes most worth learning from, most useful first. Skip trivial ones.
+      - before: their words, exactly as written (a few words, not the whole sentence).
+      - after: your replacement.
+      - why: the reason, in simple English, at most 12 words ("'Discuss' doesn't take 'about'.").
+    """
+
+    private static let polishSchema: [String: Any] = object([
+        "improved": string,
+        "verdict": string,
+        "changes": array(of: object(["before": string, "after": string, "why": string])),
     ])
 
     // MARK: - Reading: a whole English sentence in Hebrew

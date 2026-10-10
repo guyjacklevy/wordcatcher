@@ -38,6 +38,7 @@ struct PopupView: View {
                     MultiResultCard(model: model)
                 }
             case .compose: ComposeCard(model: model)
+            case .polish: PolishCard(model: model)
             case .error: ErrorCard(model: model)
             }
         }
@@ -396,8 +397,144 @@ private struct PickerCard: View {
             }
             .buttonStyle(.plain)
             .disabled(model.pickedWords.isEmpty)
+
+            if model.canSwitchMode {
+                HStack {
+                    Spacer()
+                    LinkButton(title: "Did you write this? Improve my English") { model.onSwitchToPolish() }
+                }
+                .padding(.top, -6)
+            }
         }
         .padding(18)
+    }
+}
+
+/// Improve my English: your text, rewritten to read fluently, with what changed and why.
+private struct PolishCard: View {
+    @ObservedObject var model: PopupModel
+
+    private let styles: [(label: String, instruction: String)] = [
+        ("More formal", "more formal"),
+        ("Friendlier", "friendlier and warmer"),
+        ("Shorter", "shorter and more direct"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.brand)
+                Text("Improve my English")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.muted)
+                Spacer()
+                RoundIconButton(systemName: "xmark", label: "Close", bordered: false, size: 28) { model.onClose() }
+            }
+
+            if let result = model.polishResult, !model.polishing {
+                Text(result.verdict)
+                    .font(.system(size: 12.5))
+                    .foregroundColor(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+                ScrollView {
+                    Text(model.polishedText)
+                        .font(.system(size: 15))
+                        .foregroundColor(.ink)
+                        .lineSpacing(3)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxHeight: 220)
+                .fixedSize(horizontal: false, vertical: true)
+
+                if !result.changes.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SectionLabel(text: "What changed")
+                        ForEach(Array(result.changes.enumerated()), id: \.offset) { _, change in
+                            VStack(alignment: .leading, spacing: 2) {
+                                (Text(change.before).strikethrough().foregroundColor(.muted)
+                                    + Text("  →  ").foregroundColor(.muted)
+                                    + Text(change.after).fontWeight(.semibold).foregroundColor(.ink))
+                                    .font(.system(size: 13))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Text(change.why)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(.top, 10)
+                    .overlay(Rectangle().fill(Color.line).frame(height: 1), alignment: .top)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(model.polishStyle == nil ? "Improving your English…" : "Rewriting…")
+                        .font(.system(size: 13))
+                        .foregroundColor(.muted)
+                }
+                Text(model.polishOriginal)
+                    .font(.system(size: 13))
+                    .foregroundColor(.muted)
+                    .lineLimit(3)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(styles, id: \.instruction) { style in
+                    let on = model.polishStyle == style.instruction
+                    Button { model.onPolishStyle(on ? nil : style.instruction) } label: {
+                        Text(style.label)
+                            .font(.system(size: 12.5, weight: on ? .semibold : .regular))
+                            .foregroundColor(.ink)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.marker : Color.white))
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(on ? Color.markerBorder : Color.chipBorder, lineWidth: 1))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.polishing)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button { model.onUseIt() } label: {
+                    Text("Use it")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .background(RoundedRectangle(cornerRadius: 9).fill(Color.brand))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Replace your text with this version")
+                Button { model.onCopy() } label: {
+                    Text(model.copied ? "Copied" : "Copy")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.ink)
+                        .frame(width: 96, height: 36)
+                        .background(RoundedRectangle(cornerRadius: 9).fill(Color.white))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.chipBorder, lineWidth: 1))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .disabled(model.polishResult == nil || model.polishing)
+            .opacity(model.polishResult == nil || model.polishing ? 0.5 : 1)
+
+            if model.canSwitchMode {
+                HStack {
+                    Spacer()
+                    LinkButton(title: "Reading this? Translate to Hebrew") { model.onSwitchToTranslate() }
+                }
+                .padding(.top, -6)
+            }
+        }
+        .padding(EdgeInsets(top: 12, leading: 18, bottom: 14, trailing: 12))
     }
 }
 

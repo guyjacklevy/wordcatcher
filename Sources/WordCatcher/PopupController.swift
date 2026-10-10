@@ -57,6 +57,9 @@ final class PopupController {
         model.onUseIt = { [weak self] in self?.useComposed() }
         model.onCopy = { [weak self] in self?.copyComposed() }
         model.onCopyTranslation = { [weak self] in self?.copySentenceTranslation() }
+        model.onPolishStyle = { [weak self] style in self?.restyle(style) }
+        model.onSwitchToPolish = { [weak self] in self?.startPolish() }
+        model.onSwitchToTranslate = { [weak self] in self?.startReading() }
         model.onErrorAction = { [weak self] action in
             self?.close()
             switch action {
@@ -80,6 +83,10 @@ final class PopupController {
         model.wholeTranslation = false
         model.unsavedNote = "Removed. It's not in your words."
         model.saveLabel = "Save it"
+        model.canSwitchMode = false
+        model.polishResult = nil
+        model.polishStyle = nil
+        model.polishing = false
         sentenceTask?.cancel()
 
         if capture.selection.containsHebrew {
@@ -88,12 +95,10 @@ final class PopupController {
             show(at: point)
             compose(text: capture.selection, sentence: capture.sentence, whole: capture.selection.isMostlyHebrew)
         } else if capture.selection.wordCount > 4 {
-            // A whole English sentence: show it in Hebrew, and let the user tap the words they don't know.
-            model.sentence = SentenceFinder.clean(capture.selection) ?? capture.selection
-            model.tokens = PopupModel.tokenize(model.sentence ?? "")
-            setPhase(.picker)
+            // A whole English sentence: your own writing gets improved, anything else gets translated.
+            model.canSwitchMode = true
             show(at: point)
-            translateSentence(model.sentence ?? capture.selection)
+            if capture.editable { startPolish() } else { startReading() }
         } else {
             show(at: point)
             translate(marked: [capture.selection], sentence: capture.sentence)
@@ -127,6 +132,63 @@ final class PopupController {
             } catch {
                 guard let self, !Task.isCancelled else { return }
                 Log.write("translate error: \(error.localizedDescription)")
+                self.model.errorMessage = error.localizedDescription
+                self.model.errorAction = (error as? TranslatorError).flatMap { if case .missingKey = $0 { return .apiKey } else { return nil } }
+                self.setPhase(.error)
+            }
+        }
+    }
+
+    // MARK: - Reading an English sentence: Hebrew translation + word picker
+
+    private func startReading() {
+        guard let capture else { return }
+        translateTask?.cancel()
+        model.polishing = false
+        model.sentence = SentenceFinder.clean(capture.selection) ?? capture.selection
+        model.tokens = PopupModel.tokenize(model.sentence ?? "")
+        model.picked = []
+        setPhase(.picker)
+        if model.sentenceTranslation == nil, !model.translatingSentence {
+            translateSentence(model.sentence ?? capture.selection)
+        }
+    }
+
+    // MARK: - Improve my English
+
+    private func startPolish() {
+        guard let capture else { return }
+        model.polishOriginal = capture.selection
+        model.polishStyle = nil
+        model.copied = false
+        Log.write("polish app=\(capture.app?.bundleIdentifier ?? "?") editable=\(capture.editable)")
+        runPolish()
+    }
+
+    private func restyle(_ style: String?) {
+        model.polishStyle = style
+        model.copied = false
+        runPolish()
+    }
+
+    private func runPolish() {
+        let original = model.polishOriginal
+        let style = model.polishStyle
+        model.polishing = true
+        setPhase(.polish)
+
+        translateTask?.cancel()
+        translateTask = Task { [weak self] in
+            do {
+                let result = try await Translator.polish(original, style: style)
+                guard let self, !Task.isCancelled else { return }
+                self.model.polishResult = result
+                self.model.polishing = false
+                self.refitSoon()
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                Log.write("polish error: \(error.localizedDescription)")
+                self.model.polishing = false
                 self.model.errorMessage = error.localizedDescription
                 self.model.errorAction = (error as? TranslatorError).flatMap { if case .missingKey = $0 { return .apiKey } else { return nil } }
                 self.setPhase(.error)
@@ -236,20 +298,26 @@ final class PopupController {
             : "Already in your words · you'll practice saying it"
     }
 
+    /// The text "Use it" and "Copy" act on: the improved English, or the English for your Hebrew.
+    private var outputText: String {
+        model.phase == .polish ? (model.polishResult?.improved ?? "") : model.composedText
+    }
+
     private func useComposed() {
-        let text = model.composedText
+        let text = outputText
+        guard !text.isEmpty else { return }
         let app = capture?.app
+        Log.write("\(model.phase == .polish ? "polish" : "compose") used app=\(app?.bundleIdentifier ?? "?")")
         closeTimer?.invalidate()
         removeMonitors()
         panel?.orderOut(nil) // give the keyboard back to your app before pasting
         model.phase = .idle
-        Log.write("compose used app=\(app?.bundleIdentifier ?? "?")")
         Task { await SelectionReader.replaceSelection(with: text, in: app) }
     }
 
     private func copyComposed() {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(model.composedText, forType: .string)
+        NSPasteboard.general.setString(outputText, forType: .string)
         model.copied = true
         scheduleAutoClose()
     }

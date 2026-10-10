@@ -14,6 +14,10 @@ Select a whole English sentence and press ⌃⌥T to see it in Hebrew (with Copy
 
 Writing in English but only know a word in Hebrew? Type it in Hebrew inside your sentence ("We need to להגיש the proposal by Friday"), select the sentence and press ⌃⌥T. Word Catcher suggests the English that fits (in the right form, with alternatives and when to use each). **Use it** puts the English into your text; **Copy** puts it on the clipboard. A whole sentence in Hebrew is translated into English too (Use it / Copy); its key words are offered, and saved only if you tap Save. Words you look up this way are reviewed in reverse on the phone: your sentence with the Hebrew word, and you say the English.
 
+### Writing: improve my English
+
+Select English you wrote (in a message box, email or document) and press ⌃⌥T. The card shows an improved version with the changed words highlighted, a short list of what changed and why, and one-tap rewrites: More formal · Friendlier · Shorter. **Use it** replaces your text; **Copy** copies it. Word Catcher decides between improving and translating by whether the selection is in a box you can type in; each card has a link to switch to the other.
+
 ## First run
 
 - **Accessibility permission**: macOS asks for it the first time. Word Catcher needs it to read what you selected. Turn it on in System Settings → Privacy & Security → Accessibility.
