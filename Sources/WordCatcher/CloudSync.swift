@@ -22,6 +22,7 @@ enum CloudError: LocalizedError {
         case .notSignedIn: return "Not signed in."
         case .server(_, let message) where message == "Invalid login credentials": return "Wrong email or password."
         case .server(_, let message) where message == "Email not confirmed": return "Confirm your email first: click the link Supabase sent you."
+        case .server(let status, let message) where (400..<500).contains(status): return message
         case .server(let status, let message): return "Sync error (\(status)): \(message)"
         }
     }
@@ -49,27 +50,58 @@ final class CloudSync: ObservableObject {
 
     var isSignedIn: Bool { session != nil }
 
-    // MARK: - Sign in
+    // MARK: - Account
+
+    /// What the server knows about this account: whether it's activated by an invite, and today's usage.
+    struct Account: Decodable {
+        let activated: Bool
+        let dailyLimit: Int
+        let usedToday: Int
+        let isAdmin: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case activated
+            case dailyLimit = "daily_limit"
+            case usedToday = "used_today"
+            case isAdmin = "is_admin"
+        }
+    }
+
+    @Published private(set) var account: Account?
 
     func signIn(email: String, password: String) async throws {
         let data = try await auth("token", query: "grant_type=password", body: ["email": email, "password": password])
         try storeSession(from: data, email: email)
+        await refreshAccount()
         await sync()
     }
 
-    /// Returns true when signed in right away, false when Supabase wants the email confirmed first.
-    func createAccount(email: String, password: String) async throws -> Bool {
-        let data = try await auth("signup", body: ["email": email, "password": password])
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], json["access_token"] != nil else {
-            return false
-        }
-        try storeSession(from: data, email: email)
-        await sync()
-        return true
+    /// Creates an account with an invite code (the server checks the code), then signs in.
+    func createAccount(email: String, password: String, invite: String) async throws {
+        _ = try await function("account", body: ["action": "signup", "email": email, "password": password, "invite": invite], signedIn: false)
+        try await signIn(email: email, password: password)
+    }
+
+    /// Activates an account that was made without an invite.
+    func redeem(invite: String) async throws {
+        _ = try await function("account", body: ["action": "redeem", "invite": invite], signedIn: true)
+        await refreshAccount()
+    }
+
+    func refreshAccount() async {
+        guard session != nil,
+              let data = try? await function("account", body: ["action": "me"], signedIn: true) else { return }
+        account = try? JSONDecoder().decode(Account.self, from: data)
+    }
+
+    /// The signed-in user's session token, refreshed when needed.
+    func accessToken() async throws -> String {
+        try await validAccessToken()
     }
 
     func signOut() {
         session = nil
+        account = nil
         try? FileManager.default.removeItem(at: sessionURL)
     }
 
@@ -186,6 +218,16 @@ final class CloudSync: ObservableObject {
         request.httpMethod = "POST"
         request.setValue(CloudConfig.publishableKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await send(request)
+    }
+
+    private func function(_ name: String, body: [String: Any], signedIn: Bool) async throws -> Data {
+        var request = URLRequest(url: CloudConfig.url.appendingPathComponent("functions/v1/\(name)"))
+        request.httpMethod = "POST"
+        request.setValue(CloudConfig.publishableKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        if signedIn { request.setValue("Bearer \(try await validAccessToken())", forHTTPHeaderField: "authorization") }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return try await send(request)
     }

@@ -14,7 +14,7 @@ struct ResultRow: Identifiable {
 }
 
 enum ErrorAction {
-    case apiKey
+    case account
     case accessibility
 }
 

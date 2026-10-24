@@ -21,7 +21,14 @@ Select English you wrote (in a message box, email or document) and press ⌃⌥T
 ## First run
 
 - **Accessibility permission**: macOS asks for it the first time. Word Catcher needs it to read what you selected. Turn it on in System Settings → Privacy & Security → Accessibility.
-- **Claude API key**: paste it in the window that opens (menu bar book icon → Claude API key…). It's stored in your Keychain.
+- **Account**: sign in, or create an account with an invite code (menu bar book icon → Account & phone sync…). The same account works in the phone app.
+
+## Sharing with friends
+
+- Friends download the Mac app at https://wordcatcher-web.vercel.app/download (built by `scripts/release.sh` into `web/downloads/WordCatcher.zip`). It's ad-hoc signed, so the first launch needs System Settings → Privacy & Security → Open Anyway. An Apple Developer ID ($99/year) would remove that step.
+- Sign-up is invite-only. Create codes on https://wordcatcher-web.vercel.app/admin (owner account only), which also shows usage and Claude cost per person.
+- All Claude calls go through the `ai` edge function with the owner's key (`ANTHROPIC_API_KEY` in Supabase Edge Function secrets). It checks the session, the invite (a `profiles` row) and a daily limit (150 lookups per 24 hours by default), and logs every call in `usage_events` with tokens and cost. Prompts live in that function, so they can change without a new app build.
+- The `account` edge function handles invite sign-up, activation, account info and the admin stats/invites.
 
 ## Phone app (review)
 
@@ -48,4 +55,4 @@ Requires the Swift toolchain (Xcode Command Line Tools is enough).
 - Saved words: `~/Library/Application Support/WordCatcher/words.json` (the cloud copy is in Supabase)
 - Phone sync session: `~/Library/Application Support/WordCatcher/session.json` (readable only by you)
 - Diagnostic log (capture method per app, never the text): `~/Library/Logs/WordCatcher.log`
-- Claude model: `Translator.model` in `Sources/WordCatcher/Translator.swift`
+- Claude model and prompts: the `ai` edge function in Supabase (Haiku 4.5)

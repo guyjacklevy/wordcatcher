@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Word Catcher for Mac</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#F3F4F7">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;1,400&family=Rubik:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .page { display: flex; flex-direction: column; gap: 20px; padding-top: 4vh; }
+  .lead { font-size: 17px; line-height: 1.5; color: var(--soft); }
+  .needs { font-size: 14px; color: var(--muted); line-height: 1.5; }
+  .download { text-decoration: none; }
+  .steps { margin: 0; padding: 0; list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 14px; }
+  .steps li {
+    counter-increment: step; position: relative; padding: 14px 16px 14px 52px;
+    background: var(--card); border-radius: 14px; box-shadow: 0 0 0 1px rgba(16, 20, 30, 0.06);
+    font-size: 15px; line-height: 1.5;
+  }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 14px; top: 13px;
+    width: 26px; height: 26px; border-radius: 13px; display: flex; align-items: center; justify-content: center;
+    background: var(--new-bg); color: var(--brand); font-size: 13px; font-weight: 600;
+  }
+  .steps b { font-weight: 600; }
+  kbd { font: inherit; font-weight: 600; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--ground); }
+  h2 { font-size: 20px; margin-top: 8px; }
+  .features { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 1.5; color: var(--soft); }
+</style>
+</head>
+<body>
+<main class="app page">
+  <div class="brand-mark" aria-hidden="true">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>
+  </div>
+  <h1>Word Catcher for Mac</h1>
+  <p class="lead">Select any English word or sentence on your Mac and press one shortcut: get the Hebrew, the meaning in your sentence, and better English for what you write. Every word is saved for a quick daily review on your phone.</p>
+  <p class="needs">You need a Mac with an Apple chip (M1 or newer), macOS 14 or later, and an invite code.</p>
+
+  <a class="btn btn-primary btn-tall download" href="/downloads/WordCatcher.zip" download>Download for Mac</a>
+
+  <h2>Set it up (2 minutes)</h2>
+  <ol class="steps">
+    <li>Open the downloaded file. It unzips to <b>WordCatcher</b>. Drag it into your <b>Applications</b> folder.</li>
+    <li>Open it. macOS says it can't check the developer: click <b>Done</b>. Then open <b>System Settings → Privacy &amp; Security</b>, scroll down, click <b>Open Anyway</b> next to WordCatcher, and confirm. You only do this once.</li>
+    <li>When asked, allow <b>Accessibility</b> (System Settings → Privacy &amp; Security → Accessibility → turn on WordCatcher). This lets it read the text you select.</li>
+    <li>In the window that opens, click <b>Have an invite? Create an account</b> and enter your email, a password and your invite code.</li>
+    <li>Select a word anywhere and press <kbd>⌃</kbd> <kbd>⌥</kbd> <kbd>T</kbd> (Control + Option + T).</li>
+    <li>On your iPhone, open <b>wordcatcher-web.vercel.app</b> in Safari → Share → <b>Add to Home Screen</b>, and sign in with the same email and password.</li>
+  </ol>
+
+  <h2>What it does</h2>
+  <ul class="features">
+    <li><b>A word you don't know:</b> the Hebrew and what it means in your sentence. Saved automatically.</li>
+    <li><b>A whole sentence:</b> the sentence in Hebrew, and tap the words you want to learn.</li>
+    <li><b>Writing, and only know the word in Hebrew?</b> Type it in Hebrew inside your sentence: you get the English that fits, and <b>Use it</b> puts it in.</li>
+    <li><b>English you wrote:</b> a smoother, correct version, with what changed and why.</li>
+    <li><b>On your phone:</b> a few minutes a day to review your own words, in your own sentences.</li>
+  </ul>
+</main>
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Word Catcher admin</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#F3F4F7">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .section { display: flex; flex-direction: column; gap: 10px; }
+  .section h2 { font-size: 18px; margin: 8px 0 0; }
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .tile { background: var(--card); border-radius: 14px; padding: 12px 14px; box-shadow: 0 0 0 1px rgba(16, 20, 30, 0.06); }
+  .tile b { display: block; font-size: 24px; font-weight: 600; }
+  .tile span { font-size: 13px; color: var(--muted); }
+  .rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .row { background: var(--card); border-radius: 14px; padding: 12px 14px; box-shadow: 0 0 0 1px rgba(16, 20, 30, 0.06); display: flex; flex-direction: column; gap: 4px; }
+  .row-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .row-head b { font-weight: 600; overflow-wrap: anywhere; }
+  .facts { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .bar { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .bar span:first-child { width: 150px; flex-shrink: 0; }
+  .bar .track { flex: 1; height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--brand); border-radius: 4px; }
+  .bar .n { width: 40px; text-align: right; color: var(--muted); }
+  .invite-form { display: flex; gap: 8px; flex-wrap: wrap; }
+  .invite-form input {
+    flex: 1 1 180px; min-width: 0; height: 44px; padding: 0 12px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--card); color: var(--ink); font: inherit; font-size: 16px;
+  }
+  .invite-form select { height: 44px; padding: 0 10px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--ink); font: inherit; font-size: 15px; }
+  .new-code { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--new-bg); color: var(--new-fg); }
+  .new-code code { flex: 1; font-size: 20px; font-weight: 600; letter-spacing: 0.04em; }
+  .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="app view">
+  <header class="top">
+    <div>
+      <h1>Usage &amp; invites</h1>
+      <p class="muted" id="summary">Loading…</p>
+    </div>
+    <a class="icon-btn" href="/" aria-label="Back to my words">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path></svg>
+    </a>
+  </header>
+
+  <p class="error" id="error" role="alert" hidden></p>
+
+  <div id="content" hidden>
+    <section class="section">
+      <h2>Invite a friend</h2>
+      <form class="invite-form" id="invite-form">
+        <input id="invite-note" type="text" placeholder="Who is it for? (e.g. Dana)" aria-label="Who the invite is for" maxlength="80">
+        <select id="invite-uses" aria-label="How many people can use it">
+          <option value="1">1 person</option>
+          <option value="5">5 people</option>
+          <option value="20">20 people</option>
+        </select>
+        <button class="btn btn-primary" type="submit">Create code</button>
+      </form>
+      <div class="new-code" id="new-code" hidden>
+        <code id="new-code-text"></code>
+        <button class="btn btn-outline" type="button" id="copy-code">Copy</button>
+      </div>
+      <p class="facts">Send your friend the code and this link: <b>wordcatcher-web.vercel.app/download</b></p>
+    </section>
+
+    <section class="section">
+      <h2>Lookups</h2>
+      <div class="tiles">
+        <div class="tile"><b id="t-1d">0</b><span>last 24 hours</span></div>
+        <div class="tile"><b id="t-7d">0</b><span>last 7 days</span></div>
+        <div class="tile"><b id="t-30d">0</b><span>last 30 days</span></div>
+        <div class="tile"><b id="t-cost">$0</b><span>Claude cost, 30 days</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>What people use (30 days)</h2>
+      <div id="features" class="section"></div>
+    </section>
+
+    <section class="section">
+      <h2>People</h2>
+      <ul class="rows" id="users"></ul>
+    </section>
+
+    <section class="section">
+      <h2>Invite codes</h2>
+      <ul class="rows" id="invites"></ul>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const sb = createClient('https://aceyqtcljidnfzesqyjq.supabase.co', 'sb_publishable_XvYDHMwoBOU4gF-SzKRIIg_gZMzeSYb', {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+});
+const $ = (id) => document.getElementById(id);
+
+const FEATURES = {
+  explain: 'Explain a word',
+  translate_he: 'Sentence → Hebrew',
+  compose: 'Hebrew → English',
+  polish: 'Improve my English',
+};
+
+function el(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') node.className = v; else if (k === 'text') node.textContent = v; else node.setAttribute(k, v);
+  }
+  node.append(...children.filter((c) => c !== null && c !== undefined && c !== false));
+  return node;
+}
+const money = (n) => `$${Number(n || 0).toFixed(2)}`;
+const day = (iso) => (iso ? new Date(iso).toLocaleDateString('en', { month: 'short', day: 'numeric' }) : 'never');
+const ago = (iso) => {
+  if (!iso) return 'not yet';
+  const hours = (Date.now() - new Date(iso).getTime()) / 3600e3;
+  if (hours < 1) return 'within the hour';
+  if (hours < 24) return `${Math.round(hours)} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+};
+
+function fail(message) {
+  $('error').textContent = message;
+  $('error').hidden = false;
+  $('summary').textContent = '';
+}
+
+async function call(body) {
+  const { data, error } = await sb.functions.invoke('account', { body });
+  if (error) {
+    const detail = await error.context?.json?.().catch(() => null);
+    throw new Error(detail?.error ?? 'Request failed.');
+  }
+  return data;
+}
+
+async function load() {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) { fail('Sign in on the main page first, then come back here.'); return; }
+  let stats;
+  try {
+    stats = await call({ action: 'stats' });
+  } catch (e) {
+    fail(e.message === 'Not allowed.' ? 'This page is for the Word Catcher owner.' : e.message);
+    return;
+  }
+  render(stats);
+}
+
+function render(stats) {
+  const t = stats.totals || {};
+  $('t-1d').textContent = t.lookups_1d ?? 0;
+  $('t-7d').textContent = t.lookups_7d ?? 0;
+  $('t-30d').textContent = t.lookups_30d ?? 0;
+  $('t-cost').textContent = money(t.cost_30d);
+  const people = stats.users || [];
+  $('summary').textContent = `${people.length} ${people.length === 1 ? 'person' : 'people'} · ${money(t.cost_30d)} in the last 30 days`;
+
+  const features = stats.features || {};
+  const max = Math.max(1, ...Object.values(features));
+  $('features').replaceChildren(...Object.keys(FEATURES).map((key) => {
+    const n = features[key] || 0;
+    const fill = el('div', { class: 'fill' });
+    fill.style.width = `${Math.round((n / max) * 100)}%`;
+    return el('div', { class: 'bar' }, el('span', { text: FEATURES[key] }), el('div', { class: 'track' }, fill), el('span', { class: 'n', text: String(n) }));
+  }));
+
+  $('users').replaceChildren(...people.map((u) => el('li', { class: 'row' },
+    el('div', { class: 'row-head' }, el('b', { text: u.email }), el('span', { class: 'facts', text: `last used ${ago(u.last_used)}` })),
+    el('span', { class: 'facts', text: `${u.lookups_1d} today · ${u.lookups_7d} this week · ${u.lookups_30d} this month · ${money(u.cost_30d)}` }),
+    el('span', { class: 'facts', text: `${u.words} words saved · ${u.reviews_7d} reviews this week · joined ${day(u.joined)}${u.invite_code ? ` · ${u.invite_code}` : ''}${u.is_admin ? ' · owner' : ''}` }),
+  )));
+
+  const invites = stats.invites || [];
+  $('invites').replaceChildren(...(invites.length ? invites.map((i) => el('li', { class: 'row' },
+    el('div', { class: 'row-head' }, el('span', { class: 'code', text: i.code }), el('span', { class: 'facts', text: `${i.uses} of ${i.max_uses} used` })),
+    i.note ? el('span', { class: 'facts', text: i.note }) : null,
+  )) : [el('li', { class: 'facts', text: 'No invite codes yet.' })]));
+
+  $('content').hidden = false;
+}
+
+$('invite-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    const { code } = await call({ action: 'create_invite', note: $('invite-note').value.trim(), max_uses: Number($('invite-uses').value) });
+    $('new-code-text').textContent = code;
+    $('new-code').hidden = false;
+    $('invite-note').value = '';
+    load();
+  } catch (e) {
+    fail(e.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$('copy-code').addEventListener('click', async () => {
+  await navigator.clipboard.writeText($('new-code-text').textContent).catch(() => {});
+  $('copy-code').textContent = 'Copied';
+  setTimeout(() => { $('copy-code').textContent = 'Copy'; }, 1500);
+});
+
+load();
+</script>
+</body>
+</html>

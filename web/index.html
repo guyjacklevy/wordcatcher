@@ -37,9 +37,14 @@
           <span>Password</span>
           <input id="input-password" type="password" autocomplete="current-password" required minlength="6" placeholder="At least 6 characters">
         </label>
+        <label class="field" id="invite-field" hidden>
+          <span>Invite code</span>
+          <input id="input-invite" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="WC-XXXX-XXXX">
+        </label>
         <button class="btn btn-primary" type="submit" id="btn-signin">Sign in</button>
-        <button class="btn btn-quiet" type="button" id="btn-mode">New here? Create an account</button>
+        <button class="btn btn-quiet" type="button" id="btn-mode">Have an invite? Create an account</button>
       </form>
+      <p class="muted small">On a Mac? <a href="/download">Get the Mac app</a> to catch words while you read and write.</p>
       <p class="muted" id="signin-info" role="status" hidden></p>
       <p class="error" id="signin-error" role="alert" hidden></p>
     </div>

@@ -192,7 +192,9 @@ function showSignIn() {
 function setMode(create) {
   creating = create;
   $('btn-signin').textContent = create ? 'Create account' : 'Sign in';
-  $('btn-mode').textContent = create ? 'I already have an account' : 'New here? Create an account';
+  $('btn-mode').textContent = create ? 'I already have an account' : 'Have an invite? Create an account';
+  $('invite-field').hidden = !create;
+  $('input-invite').required = create;
   $('input-password').setAttribute('autocomplete', create ? 'new-password' : 'current-password');
 }
 
@@ -223,15 +225,19 @@ async function submitSignIn(event) {
   signInInfo('');
 
   if (creating) {
-    const { data, error } = await sb.auth.signUp({ email, password });
+    // Accounts are invite-only: the server checks the code and creates the account.
+    const invite = $('input-invite').value.trim().toUpperCase();
+    const { error: signupError } = await sb.functions.invoke('account', { body: { action: 'signup', email, password, invite } });
+    if (signupError) {
+      button.disabled = false;
+      const detail = await signupError.context?.json?.().catch(() => null);
+      signInError(detail?.error ?? 'Couldn’t create the account. Check the invite code and try again.');
+      return;
+    }
+    const { error } = await sb.auth.signInWithPassword({ email, password });
     button.disabled = false;
     if (error) {
       signInError(AUTH_MESSAGES[error.message] ?? error.message);
-      return;
-    }
-    if (!data.session) {
-      signInInfo('Almost done: Supabase emailed you a link. Click it to confirm your email, then sign in here.');
-      setMode(false);
       return;
     }
   } else {
