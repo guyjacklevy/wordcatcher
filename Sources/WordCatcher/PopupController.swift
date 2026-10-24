@@ -44,7 +44,7 @@ final class PopupController {
     private var keyMonitor: Any?
     private var localKeyMonitor: Any?
 
-    var openAccount: () -> Void = {}
+    var openAPIKeySettings: () -> Void = {}
     var openAccessibilitySettings: () -> Void = {}
 
     init(store: WordStore) {
@@ -63,7 +63,7 @@ final class PopupController {
         model.onErrorAction = { [weak self] action in
             self?.close()
             switch action {
-            case .account: self?.openAccount()
+            case .apiKey: self?.openAPIKeySettings()
             case .accessibility: self?.openAccessibilitySettings()
             }
         }
@@ -133,7 +133,7 @@ final class PopupController {
                 guard let self, !Task.isCancelled else { return }
                 Log.write("translate error: \(error.localizedDescription)")
                 self.model.errorMessage = error.localizedDescription
-                self.model.errorAction = (error as? TranslatorError)?.action
+                self.model.errorAction = (error as? TranslatorError).flatMap { if case .missingKey = $0 { return .apiKey } else { return nil } }
                 self.setPhase(.error)
             }
         }
@@ -190,7 +190,7 @@ final class PopupController {
                 Log.write("polish error: \(error.localizedDescription)")
                 self.model.polishing = false
                 self.model.errorMessage = error.localizedDescription
-                self.model.errorAction = (error as? TranslatorError)?.action
+                self.model.errorAction = (error as? TranslatorError).flatMap { if case .missingKey = $0 { return .apiKey } else { return nil } }
                 self.setPhase(.error)
             }
         }
@@ -261,7 +261,7 @@ final class PopupController {
                 guard let self, !Task.isCancelled else { return }
                 Log.write("compose error: \(error.localizedDescription)")
                 self.model.errorMessage = error.localizedDescription
-                self.model.errorAction = (error as? TranslatorError)?.action
+                self.model.errorAction = (error as? TranslatorError).flatMap { if case .missingKey = $0 { return .apiKey } else { return nil } }
                 self.setPhase(.error)
             }
         }

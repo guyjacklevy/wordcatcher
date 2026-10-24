@@ -19,18 +19,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installEditMenu()
         installStatusItem()
 
-        popup.openAccount = { [weak self] in self?.windows.showSync() }
-        Translator.tokenProvider = { [weak self] in
-            guard let self else { throw TranslatorError.notSignedIn }
-            return try await self.cloud.accessToken()
-        }
+        popup.openAPIKeySettings = { [weak self] in self?.windows.showAPIKey() }
         store.onChange = { [weak self] in self?.cloud.syncSoon() }
 
         // Push anything saved while offline: now, and every 10 minutes.
-        Task {
-            await cloud.refreshAccount()
-            await cloud.sync()
-        }
+        Task { await cloud.sync() }
         syncTimer = Timer.scheduledTimer(withTimeInterval: 600, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.cloud.sync() }
         }
@@ -41,13 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Task { @MainActor in await self?.markSelection() }
         }
 
-        // First run: ask for Accessibility (needed to read the selection), then sign in.
+        // First run: ask for Accessibility (needed to read the selection) and for the API key.
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
         enableOpenAtLoginOnce()
+        if Keychain.isMissing { windows.showAPIKey() }
         if !cloud.isSignedIn { windows.showSync() }
 
-        Log.write("launched, accessibility=\(AXIsProcessTrusted()) cloud=\(cloud.isSignedIn)")
+        Log.write("launched, accessibility=\(AXIsProcessTrusted()) key=\(Keychain.hasAPIKey) cloud=\(cloud.isSignedIn)")
     }
 
     private func markSelection() async {
@@ -77,10 +71,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         mark.keyEquivalentModifierMask = [.control, .option]
         menu.addItem(mark)
         menu.addItem(.separator())
-        let sync = NSMenuItem(title: "Account & phone sync…", action: #selector(showSync), keyEquivalent: "")
+        let sync = NSMenuItem(title: "Sync with your phone…", action: #selector(showSync), keyEquivalent: "")
         menu.addItem(sync)
         syncItem = sync
         menu.addItem(NSMenuItem(title: "My words…", action: #selector(showWords), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Claude API key…", action: #selector(showAPIKey), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Accessibility permission…", action: #selector(openAccessibilityFromMenu), keyEquivalent: ""))
         let login = NSMenuItem(title: "Open at login", action: #selector(toggleOpenAtLogin), keyEquivalent: "")
         menu.addItem(login)
@@ -111,9 +106,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         loginItem?.state = SMAppService.mainApp.status == .enabled ? .on : .off
         if let session = cloud.session {
-            syncItem?.title = cloud.lastError == nil ? "Account · \(session.email)" : "Account: sync problem, click to see"
+            syncItem?.title = cloud.lastError == nil ? "Phone sync on · \(session.email)" : "Phone sync: problem, click to see"
         } else {
-            syncItem?.title = "Sign in to Word Catcher…"
+            syncItem?.title = "Turn on phone sync…"
         }
     }
 
@@ -151,6 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func markFromMenu() { Task { await markSelection() } }
     @objc private func showWords() { windows.showWords() }
     @objc private func showSync() { windows.showSync() }
+    @objc private func showAPIKey() { windows.showAPIKey() }
     @objc private func openAccessibilityFromMenu() { openAccessibilitySettings() }
     @objc private func quit() { NSApp.terminate(nil) }
 

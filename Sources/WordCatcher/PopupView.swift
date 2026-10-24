@@ -662,7 +662,7 @@ private struct ErrorCard: View {
                 Button {
                     model.onErrorAction(action)
                 } label: {
-                    Text(action == .account ? "Open account" : "Open Accessibility settings")
+                    Text(action == .apiKey ? "Add API key" : "Open Accessibility settings")
                         .font(.system(size: 13.5, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity, minHeight: 36)

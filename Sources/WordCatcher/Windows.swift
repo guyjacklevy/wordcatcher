@@ -1,11 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// The small windows the menu opens: account (sign-in and phone sync) and the saved words list.
+/// The small windows the menu opens: API key, phone sync, and the saved words list.
 @MainActor
 final class WindowsController {
     private let store: WordStore
     private let cloud: CloudSync
+    private var keyWindow: NSWindow?
     private var syncWindow: NSWindow?
     private var wordsWindow: NSWindow?
 
@@ -16,12 +17,20 @@ final class WindowsController {
 
     func showSync() {
         if syncWindow == nil {
-            let window = makeWindow(title: "Word Catcher account", size: NSSize(width: 460, height: 260))
+            let window = makeWindow(title: "Sync with your phone", size: NSSize(width: 460, height: 240))
             window.contentViewController = NSHostingController(rootView: SyncView(cloud: cloud, store: store))
             syncWindow = window
         }
-        Task { await cloud.refreshAccount() }
         present(syncWindow)
+    }
+
+    func showAPIKey() {
+        if keyWindow == nil {
+            let window = makeWindow(title: "Claude API key", size: NSSize(width: 460, height: 230))
+            window.contentViewController = NSHostingController(rootView: APIKeyView { [weak window] in window?.close() })
+            keyWindow = window
+        }
+        present(keyWindow)
     }
 
     func showWords() {
@@ -53,131 +62,122 @@ final class WindowsController {
     }
 }
 
-struct SyncView: View {
-    @ObservedObject var cloud: CloudSync
-    @ObservedObject var store: WordStore
-    @State private var email = ""
-    @State private var password = ""
-    @State private var invite = ""
-    @State private var creating = false
-    @State private var busy = false
-    @State private var error: String?
+struct APIKeyView: View {
+    @State private var key = ""
+    @State private var hasKey = Keychain.hasAPIKey
+    @State private var failed = false
+    let onDone: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let session = cloud.session {
-                signedIn(session)
-            } else {
-                signInForm
+            Text("Word Catcher uses Claude to explain each word you mark. Paste your API key from the Claude Console. It's stored in your Mac's Keychain and only sent to Anthropic.")
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+            SecureField(hasKey ? "A key is saved. Paste a new one to replace it." : "Paste your API key", text: $key)
+                .textFieldStyle(.roundedBorder)
+            HStack {
+                if hasKey {
+                    Label("Key saved", systemImage: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                        .font(.system(size: 12.5))
+                } else if failed {
+                    Text("Couldn't save to the Keychain.")
+                        .foregroundColor(.red)
+                        .font(.system(size: 12.5))
+                }
+                Spacer()
+                Link("Get a key", destination: URL(string: "https://console.anthropic.com/settings/keys")!)
+                    .font(.system(size: 12.5))
+                Button("Save") {
+                    if Keychain.setAPIKey(key.trimmed) {
+                        key = ""
+                        hasKey = true
+                        failed = false
+                        onDone()
+                    } else {
+                        failed = true
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(key.trimmed.isEmpty)
             }
         }
         .padding(20)
         .frame(width: 460)
     }
+}
 
-    // MARK: - Signed in
+struct SyncView: View {
+    @ObservedObject var cloud: CloudSync
+    @ObservedObject var store: WordStore
+    @State private var email = ""
+    @State private var password = ""
+    @State private var creating = false
+    @State private var busy = false
+    @State private var error: String?
+    @State private var info: String?
 
-    @ViewBuilder
-    private func signedIn(_ session: CloudSession) -> some View {
-        Label("Signed in as \(session.email)", systemImage: "checkmark.circle.fill")
-            .foregroundColor(.green)
-            .font(.system(size: 13, weight: .medium))
-
-        if let account = cloud.account, !account.activated {
-            // Signed in, but no invite yet: the AI features stay off until one is entered.
-            Text("Enter your invite code to start using Word Catcher.")
-                .font(.system(size: 13))
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                TextField("Invite code (WC-XXXX-XXXX)", text: $invite)
-                    .textFieldStyle(.roundedBorder)
-                if busy { ProgressView().controlSize(.small) }
-                Button("Activate") { submit { try await cloud.redeem(invite: invite.trimmed) } }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(busy || invite.trimmed.isEmpty)
-            }
-            errorText
-        } else {
-            Text(status)
-                .font(.system(size: 12.5))
-                .foregroundColor(cloud.lastError == nil ? .secondary : .red)
-                .fixedSize(horizontal: false, vertical: true)
-            if let account = cloud.account {
-                Text("Today: \(account.usedToday) of \(account.dailyLimit) lookups")
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let session = cloud.session {
+                Label("Signed in as \(session.email)", systemImage: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                    .font(.system(size: 13, weight: .medium))
+                Text(status)
+                    .font(.system(size: 12.5))
+                    .foregroundColor(cloud.lastError == nil ? .secondary : .red)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("On your phone, open the Word Catcher web app and sign in with the same email and password.")
                     .font(.system(size: 12.5))
                     .foregroundColor(.secondary)
-            }
-            Text("On your phone, open wordcatcher-web.vercel.app and sign in with the same email and password.")
-                .font(.system(size: 12.5))
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-
-        HStack {
-            Button("Sign out") { cloud.signOut() }
-            Spacer()
-            if cloud.account?.isAdmin == true {
-                Link("Usage & invites", destination: URL(string: "https://wordcatcher-web.vercel.app/admin")!)
-                    .font(.system(size: 12.5))
-            }
-            Button("Sync now") { Task { await cloud.sync() } }
-        }
-    }
-
-    // MARK: - Signed out
-
-    private var signInForm: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(creating
-                 ? "Create your account with the invite code you got. You'll use the same email and password on your phone."
-                 : "Sign in to use Word Catcher. Use the same email and password on the Mac and the phone.")
-                .font(.system(size: 13))
-                .fixedSize(horizontal: false, vertical: true)
-            TextField("Email", text: $email)
-                .textFieldStyle(.roundedBorder)
-                .textContentType(.username)
-            SecureField(creating ? "Choose a password (at least 6 characters)" : "Password", text: $password)
-                .textFieldStyle(.roundedBorder)
-                .textContentType(creating ? .newPassword : .password)
-            if creating {
-                TextField("Invite code (WC-XXXX-XXXX)", text: $invite)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Button("Sign out") { cloud.signOut() }
+                    Spacer()
+                    Button("Sync now") { Task { await cloud.sync() } }
+                        .keyboardShortcut(.defaultAction)
+                }
+            } else {
+                Text(creating
+                     ? "Create your Word Catcher account. You'll use the same email and password on your phone."
+                     : "Sign in to send your words to your phone. Use the same email and password on the Mac and the phone.")
+                    .font(.system(size: 13))
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("Email", text: $email)
                     .textFieldStyle(.roundedBorder)
-            }
-            errorText
-            HStack {
-                Button(creating ? "I already have an account" : "Have an invite? Create an account") {
-                    creating.toggle()
-                    error = nil
+                    .textContentType(.username)
+                SecureField(creating ? "Choose a password (at least 6 characters)" : "Password", text: $password)
+                    .textFieldStyle(.roundedBorder)
+                    .textContentType(creating ? .newPassword : .password)
+                if let info {
+                    Text(info)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .buttonStyle(.link)
-                Spacer()
-                if busy { ProgressView().controlSize(.small) }
-                Button(creating ? "Create account" : "Sign in") {
-                    let address = email.trimmed.lowercased()
-                    let code = invite.trimmed
-                    let secret = password
-                    submit {
-                        if creating {
-                            try await cloud.createAccount(email: address, password: secret, invite: code)
-                        } else {
-                            try await cloud.signIn(email: address, password: secret)
-                        }
+                if let error {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundColor(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack {
+                    Button(creating ? "I already have an account" : "New here? Create an account") {
+                        creating.toggle()
+                        error = nil
+                        info = nil
                     }
+                    .buttonStyle(.link)
+                    Spacer()
+                    if busy { ProgressView().controlSize(.small) }
+                    Button(creating ? "Create account" : "Sign in") { submit() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(busy || email.trimmed.isEmpty || password.count < 6)
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(busy || email.trimmed.isEmpty || password.count < 6 || (creating && invite.trimmed.isEmpty))
             }
         }
-    }
-
-    @ViewBuilder
-    private var errorText: some View {
-        if let error {
-            Text(error)
-                .font(.system(size: 12))
-                .foregroundColor(.red)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        .padding(20)
+        .frame(width: 460)
     }
 
     private var status: String {
@@ -187,14 +187,23 @@ struct SyncView: View {
         return "\(count) words · last synced \(last.formatted(date: .omitted, time: .shortened))"
     }
 
-    private func submit(_ work: @escaping () async throws -> Void) {
+    private func submit() {
         busy = true
         error = nil
+        info = nil
+        let address = email.trimmed.lowercased()
         Task {
             do {
-                try await work()
-                password = ""
-                invite = ""
+                if creating {
+                    let signedIn = try await cloud.createAccount(email: address, password: password)
+                    if !signedIn {
+                        info = "Almost done: Supabase emailed you a link. Click it to confirm your email, then sign in here."
+                        creating = false
+                    }
+                } else {
+                    try await cloud.signIn(email: address, password: password)
+                }
+                if cloud.isSignedIn { password = "" }
             } catch {
                 self.error = error.localizedDescription
             }
